@@ -901,12 +901,9 @@ end
 local function initRadialBuffers()
     for i, btn in ipairs(radialMenu.buttons) do
         local name_cp1251 = btn.name or ("Кнопка " .. i)
-        -- Убеждаемся что это CP1251
-        if encoding.UTF8 and pcall(encoding.UTF8.decode, encoding.UTF8, name_cp1251) then
-            -- Если это UTF-8, конвертируем
-            name_cp1251 = encoding.UTF8:decode(name_cp1251)
-        end
-        ffi.copy(radialButtonBuffers[i], name_cp1251, math.min(#name_cp1251, 63))
+        -- Конвертируем CP1251 → UTF-8 для ImGui
+        local name_utf8 = u8(name_cp1251)
+        ffi.copy(radialButtonBuffers[i], name_utf8, math.min(#name_utf8, 63))
     end
 end
 
@@ -1702,13 +1699,17 @@ local function renderRadialMenuTab()
             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.60, 0.55, 1.00, 0.90))
             imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.40, 0.35, 0.90, 1.00))
             if imgui.Button(u8'Сохранить##save_btn_' .. i, imgui.ImVec2(90, 0)) and not is_capturing_any then
-                -- Читаем из буфера (уже в CP1251)
-                local new_name_cp1251 = ffi.string(radialButtonBuffers[i])
+                -- Читаем из буфера (UTF-8 от ImGui)
+                local new_name_utf8 = ffi.string(radialButtonBuffers[i])
+                -- Конвертируем UTF-8 → CP1251 для сохранения
+                local new_name_cp1251 = encoding.UTF8:decode(new_name_utf8)
                 
                 if #new_name_cp1251 > 0 and #new_name_cp1251 <= 63 then
-                    -- Сохраняем как есть (CP1251), конвертация произойдет при отображении
                     btn.name = new_name_cp1251
                     saveConfig()
+                    -- После сохранения обновляем буфер
+                    local name_utf8_updated = u8(new_name_cp1251)
+                    ffi.copy(radialButtonBuffers[i], name_utf8_updated, math.min(#name_utf8_updated, 63))
                     sampAddChatMessage('[ORULE] Название кнопки #' .. i .. ' сохранено!', 0x00FF00)
                 else
                     sampAddChatMessage('[ORULE] Ошибка: название не может быть пустым или слишком длинным', 0xFF0000)
