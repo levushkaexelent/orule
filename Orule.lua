@@ -240,7 +240,8 @@ local config = {
     windowWidth = 820,
     windowHeight = 1200,
     ruleCardHeight = 183,
-    firstLaunch = true
+    firstLaunch = true,
+    autoUpdateTexts = true
 }
 
 local show_window = imgui.new.bool(false)
@@ -552,6 +553,7 @@ local function saveConfig()
     file:write("ruleCardHeight:" .. tostring(config.ruleCardHeight or 183) .. "\n")
     file:write("firstLaunch:" .. tostring(config.firstLaunch and "1" or "0") .. "\n")
     file:write("radialMenuEnabled:" .. tostring(radialMenu.globalEnabled and "1" or "0") .. "\n")
+    file:write("autoUpdateTexts:" .. tostring(config.autoUpdateTexts and "1" or "0") .. "\n")
     for i, btn in ipairs(radialMenu.buttons) do
         file:write("radialButton_" .. i .. "_name:" .. (btn.name or "") .. "\n")
         file:write("radialButton_" .. i .. "_enabled:" .. tostring(btn.enabled and "1" or "0") .. "\n")
@@ -856,6 +858,11 @@ local function loadConfig()
         local radial_enabled = line:match("^radialMenuEnabled:(.+)")
         if radial_enabled then
             radialMenu.globalEnabled = (radial_enabled == "1")
+        end
+
+        local auto_update_texts = line:match("^autoUpdateTexts:(.+)")
+        if auto_update_texts then
+            config.autoUpdateTexts = (auto_update_texts == "1")
         end
 
         local btn_idx, btn_name = line:match("^radialButton_(%d+)_name:(.+)")
@@ -1902,6 +1909,30 @@ local function renderSettingsTab()
     
     imgui.Spacing()
     imgui.Spacing()
+
+    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Обновление ресурсов')
+    imgui.Spacing()
+    
+    if is_capturing_any then
+        imgui.PushStyleVarFloat(imgui.StyleVar.Alpha, 0.5)
+    end
+    
+    local auto_update_checkbox = imgui.new.bool(config.autoUpdateTexts)
+    if imgui.Checkbox(u8'Автоматически обновлять текстовые файлы', auto_update_checkbox) and not is_capturing_any then
+        config.autoUpdateTexts = auto_update_checkbox[0]
+        saveConfig()
+    end
+    
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip(u8'При выключении текстовые файлы не будут перезаписываться при обновлении.\nШрифты и изображения всё равно будут обновляться.')
+    end
+    
+    if is_capturing_any then
+        imgui.PopStyleVar(1)
+    end
+    
+    imgui.Spacing()
+    imgui.Spacing()
     
     if is_capturing_any then
         imgui.PushStyleColor(imgui.Col.Button, disabled_color)
@@ -2700,19 +2731,29 @@ function main()
     -- ============================================================
     -- АВТОЗАГРУЗКА РЕСУРСОВ С GITHUB
     -- ============================================================
-    function downloadResource(url, path, callback)
+    function downloadResource(url, path, resource_type)
         local dir = path:match('(.+)\\[^\\]+$')
         if dir and not doesDirectoryExist(dir) then
             createDirectory(dir)
         end
         
+        -- Проверка: если это текстовый файл и автообновление текстов выключено
+        if resource_type == "text" and not config.autoUpdateTexts then
+            -- Скачиваем только если файла НЕТ
+            if not doesFileExist(path) then
+                print('[ORULE] Загружаю текст: ' .. path:match('([^\\]+)$'))
+                downloadUrlToFile(url, path)
+                return true
+            else
+                -- Файл существует, пропускаем обновление
+                return false
+            end
+        end
+        
+        -- Для шрифтов и картинок - стандартная логика
         if not doesFileExist(path) then
             print('[ORULE] Загружаю: ' .. path:match('([^\\]+)$'))
-            downloadUrlToFile(url, path, function(id, status, p1, p2)
-                if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
-                    if callback then callback(true) end
-                end
-            end)
+            downloadUrlToFile(url, path)
             return true
         end
         return false
@@ -2723,60 +2764,60 @@ function main()
         local base_path = getWorkingDirectory() .. "\\OverlayRules\\"
         
         local resources = {
-            -- === ТЕКСТОВЫЕ ФАЙЛЫ (orule/resources/texts/) ===
-            {url = base_url .. "texts/hierarchy.txt", path = base_path .. "texts\\hierarchy.txt"},
-            {url = base_url .. "texts/labor_code.txt", path = base_path .. "texts\\labor_code.txt"},
-            {url = base_url .. "texts/legal_constitution.txt", path = base_path .. "texts\\legal_constitution.txt"},
-            {url = base_url .. "texts/legal_federal.txt", path = base_path .. "texts\\legal_federal.txt"},
-            {url = base_url .. "texts/legal_fsb_law.txt", path = base_path .. "texts\\legal_fsb_law.txt"},
-            {url = base_url .. "texts/legal_koap.txt", path = base_path .. "texts\\legal_koap.txt"},
-            {url = base_url .. "texts/legal_police_law.txt", path = base_path .. "texts\\legal_police_law.txt"},
-            {url = base_url .. "texts/legal_uk.txt", path = base_path .. "texts\\legal_uk.txt"},
-            {url = base_url .. "texts/mvd_drill.txt", path = base_path .. "texts\\mvd_drill.txt"},
-            {url = base_url .. "texts/mvd_handbook.txt", path = base_path .. "texts\\mvd_handbook.txt"},
-            {url = base_url .. "texts/mvd_statute.txt", path = base_path .. "texts\\mvd_statute.txt"},
-            {url = base_url .. "texts/police_main.txt", path = base_path .. "texts\\police_main.txt"},
-            {url = base_url .. "texts/police_mask.txt", path = base_path .. "texts\\police_mask.txt"},
-            {url = base_url .. "texts/police_radar.txt", path = base_path .. "texts\\police_radar.txt"},
-            {url = base_url .. "texts/police_tint.txt", path = base_path .. "texts\\police_tint.txt"},
-            {url = base_url .. "texts/territory_army.txt", path = base_path .. "texts\\territory_army.txt"},
-            {url = base_url .. "texts/territory_army_supplement.txt", path = base_path .. "texts\\territory_army_supplement.txt"},
-            {url = base_url .. "texts/territory_fsb.txt", path = base_path .. "texts\\territory_fsb.txt"},
-            {url = base_url .. "texts/territory_fsin.txt", path = base_path .. "texts\\territory_fsin.txt"},
-            {url = base_url .. "texts/territory_fsin_supplement.txt", path = base_path .. "texts\\territory_fsin_supplement.txt"},
-            {url = base_url .. "texts/territory_government.txt", path = base_path .. "texts\\territory_government.txt"},
-            {url = base_url .. "texts/territory_hospital.txt", path = base_path .. "texts\\territory_hospital.txt"},
-            {url = base_url .. "texts/territory_main.txt", path = base_path .. "texts\\territory_main.txt"},
-            {url = base_url .. "texts/territory_mchs.txt", path = base_path .. "texts\\territory_mchs.txt"},
-            {url = base_url .. "texts/territory_mvd.txt", path = base_path .. "texts\\territory_mvd.txt"},
-            {url = base_url .. "texts/territory_smi.txt", path = base_path .. "texts\\territory_smi.txt"},
-            {url = base_url .. "texts/upk.txt", path = base_path .. "texts\\upk.txt"},
+            -- === ТЕКСТОВЫЕ ФАЙЛЫ ===
+            {url = base_url .. "texts/hierarchy.txt", path = base_path .. "texts\\hierarchy.txt", type = "text"},
+            {url = base_url .. "texts/labor_code.txt", path = base_path .. "texts\\labor_code.txt", type = "text"},
+            {url = base_url .. "texts/legal_constitution.txt", path = base_path .. "texts\\legal_constitution.txt", type = "text"},
+            {url = base_url .. "texts/legal_federal.txt", path = base_path .. "texts\\legal_federal.txt", type = "text"},
+            {url = base_url .. "texts/legal_fsb_law.txt", path = base_path .. "texts\\legal_fsb_law.txt", type = "text"},
+            {url = base_url .. "texts/legal_koap.txt", path = base_path .. "texts\\legal_koap.txt", type = "text"},
+            {url = base_url .. "texts/legal_police_law.txt", path = base_path .. "texts\\legal_police_law.txt", type = "text"},
+            {url = base_url .. "texts/legal_uk.txt", path = base_path .. "texts\\legal_uk.txt", type = "text"},
+            {url = base_url .. "texts/mvd_drill.txt", path = base_path .. "texts\\mvd_drill.txt", type = "text"},
+            {url = base_url .. "texts/mvd_handbook.txt", path = base_path .. "texts\\mvd_handbook.txt", type = "text"},
+            {url = base_url .. "texts/mvd_statute.txt", path = base_path .. "texts\\mvd_statute.txt", type = "text"},
+            {url = base_url .. "texts/police_main.txt", path = base_path .. "texts\\police_main.txt", type = "text"},
+            {url = base_url .. "texts/police_mask.txt", path = base_path .. "texts\\police_mask.txt", type = "text"},
+            {url = base_url .. "texts/police_radar.txt", path = base_path .. "texts\\police_radar.txt", type = "text"},
+            {url = base_url .. "texts/police_tint.txt", path = base_path .. "texts\\police_tint.txt", type = "text"},
+            {url = base_url .. "texts/territory_army.txt", path = base_path .. "texts\\territory_army.txt", type = "text"},
+            {url = base_url .. "texts/territory_army_supplement.txt", path = base_path .. "texts\\territory_army_supplement.txt", type = "text"},
+            {url = base_url .. "texts/territory_fsb.txt", path = base_path .. "texts\\territory_fsb.txt", type = "text"},
+            {url = base_url .. "texts/territory_fsin.txt", path = base_path .. "texts\\territory_fsin.txt", type = "text"},
+            {url = base_url .. "texts/territory_fsin_supplement.txt", path = base_path .. "texts\\territory_fsin_supplement.txt", type = "text"},
+            {url = base_url .. "texts/territory_government.txt", path = base_path .. "texts\\territory_government.txt", type = "text"},
+            {url = base_url .. "texts/territory_hospital.txt", path = base_path .. "texts\\territory_hospital.txt", type = "text"},
+            {url = base_url .. "texts/territory_main.txt", path = base_path .. "texts\\territory_main.txt", type = "text"},
+            {url = base_url .. "texts/territory_mchs.txt", path = base_path .. "texts\\territory_mchs.txt", type = "text"},
+            {url = base_url .. "texts/territory_mvd.txt", path = base_path .. "texts\\territory_mvd.txt", type = "text"},
+            {url = base_url .. "texts/territory_smi.txt", path = base_path .. "texts\\territory_smi.txt", type = "text"},
+            {url = base_url .. "texts/upk.txt", path = base_path .. "texts\\upk.txt", type = "text"},
             
-            -- === ИЗОБРАЖЕНИЯ (orule/resources/images/) ===
-            {url = base_url .. "images/radar_map.png", path = base_path .. "images\\radar_map.png"},
-            {url = base_url .. "images/ter_1.jpg", path = base_path .. "images\\ter_1.jpg"},
-            {url = base_url .. "images/ter_2.jpg", path = base_path .. "images\\ter_2.jpg"},
-            {url = base_url .. "images/ter_3.jpg", path = base_path .. "images\\ter_3.jpg"},
-            {url = base_url .. "images/ter_4.jpg", path = base_path .. "images\\ter_4.jpg"},
-            {url = base_url .. "images/ter_5.jpg", path = base_path .. "images\\ter_5.jpg"},
-            {url = base_url .. "images/ter_6.jpg", path = base_path .. "images\\ter_6.jpg"},
-            {url = base_url .. "images/ter_7.jpg", path = base_path .. "images\\ter_7.jpg"},
-            {url = base_url .. "images/ter_8.jpg", path = base_path .. "images\\ter_8.jpg"},
-            {url = base_url .. "images/ter_9.jpg", path = base_path .. "images\\ter_9.jpg"},
-            {url = base_url .. "images/ter_10.jpg", path = base_path .. "images\\ter_10.jpg"},
-            {url = base_url .. "images/ter_11.jpg", path = base_path .. "images\\ter_11.jpg"},
-            {url = base_url .. "images/ter_12.jpg", path = base_path .. "images\\ter_12.jpg"},
-            {url = base_url .. "images/ter_13.jpg", path = base_path .. "images\\ter_13.jpg"},
-            {url = base_url .. "images/ter_14.jpg", path = base_path .. "images\\ter_14.jpg"},
-            {url = base_url .. "images/ter_15.jpg", path = base_path .. "images\\ter_15.jpg"},
-            {url = base_url .. "images/ter_16.jpg", path = base_path .. "images\\ter_16.jpg"},
-            {url = base_url .. "images/ter_17.jpg", path = base_path .. "images\\ter_17.jpg"},
-            {url = base_url .. "images/ter_18.jpg", path = base_path .. "images\\ter_18.jpg"},
-            {url = base_url .. "images/ter_19.jpg", path = base_path .. "images\\ter_19.jpg"},
-            {url = base_url .. "images/ter_20.jpg", path = base_path .. "images\\ter_20.jpg"},
+            -- === ИЗОБРАЖЕНИЯ ===
+            {url = base_url .. "images/radar_map.png", path = base_path .. "images\\radar_map.png", type = "image"},
+            {url = base_url .. "images/ter_1.jpg", path = base_path .. "images\\ter_1.jpg", type = "image"},
+            {url = base_url .. "images/ter_2.jpg", path = base_path .. "images\\ter_2.jpg", type = "image"},
+            {url = base_url .. "images/ter_3.jpg", path = base_path .. "images\\ter_3.jpg", type = "image"},
+            {url = base_url .. "images/ter_4.jpg", path = base_path .. "images\\ter_4.jpg", type = "image"},
+            {url = base_url .. "images/ter_5.jpg", path = base_path .. "images\\ter_5.jpg", type = "image"},
+            {url = base_url .. "images/ter_6.jpg", path = base_path .. "images\\ter_6.jpg", type = "image"},
+            {url = base_url .. "images/ter_7.jpg", path = base_path .. "images\\ter_7.jpg", type = "image"},
+            {url = base_url .. "images/ter_8.jpg", path = base_path .. "images\\ter_8.jpg", type = "image"},
+            {url = base_url .. "images/ter_9.jpg", path = base_path .. "images\\ter_9.jpg", type = "image"},
+            {url = base_url .. "images/ter_10.jpg", path = base_path .. "images\\ter_10.jpg", type = "image"},
+            {url = base_url .. "images/ter_11.jpg", path = base_path .. "images\\ter_11.jpg", type = "image"},
+            {url = base_url .. "images/ter_12.jpg", path = base_path .. "images\\ter_12.jpg", type = "image"},
+            {url = base_url .. "images/ter_13.jpg", path = base_path .. "images\\ter_13.jpg", type = "image"},
+            {url = base_url .. "images/ter_14.jpg", path = base_path .. "images\\ter_14.jpg", type = "image"},
+            {url = base_url .. "images/ter_15.jpg", path = base_path .. "images\\ter_15.jpg", type = "image"},
+            {url = base_url .. "images/ter_16.jpg", path = base_path .. "images\\ter_16.jpg", type = "image"},
+            {url = base_url .. "images/ter_17.jpg", path = base_path .. "images\\ter_17.jpg", type = "image"},
+            {url = base_url .. "images/ter_18.jpg", path = base_path .. "images\\ter_18.jpg", type = "image"},
+            {url = base_url .. "images/ter_19.jpg", path = base_path .. "images\\ter_19.jpg", type = "image"},
+            {url = base_url .. "images/ter_20.jpg", path = base_path .. "images\\ter_20.jpg", type = "image"},
             
-            -- === ШРИФТ (orule/resources/fonts/) ===
-            {url = base_url .. "fonts/EagleSans-Regular.ttf", path = base_path .. "fonts\\EagleSans-Regular.ttf"},
+            -- === ШРИФТ ===
+            {url = base_url .. "fonts/EagleSans-Regular.ttf", path = base_path .. "fonts\\EagleSans-Regular.ttf", type = "font"},
         }
         
         local downloaded = 0
@@ -2785,7 +2826,7 @@ function main()
         sampAddChatMessage('[ORULE] Проверка ресурсов... (' .. total .. ' файлов)', 0xFFFFFF)
         
         for i, res in ipairs(resources) do
-            if downloadResource(res.url, res.path) then
+            if downloadResource(res.url, res.path, res.type) then
                 downloaded = downloaded + 1
             end
             
