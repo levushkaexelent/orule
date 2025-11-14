@@ -1,4 +1,4 @@
-<img width="500" height="500" alt="logo" src="https://github.com/user-attachments/assets/b0718e1c-fab0-4642-9ca8-37266b8e0d25" />
+<img width="900" height="900" alt="logo" src="https://github.com/user-attachments/assets/b0718e1c-fab0-4642-9ca8-37266b8e0d25" />
 
 # ORULE - Менеджер правил для MoonLoader
 
