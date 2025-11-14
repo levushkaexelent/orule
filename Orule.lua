@@ -1,5 +1,6 @@
 script_name('Orule - Менеджер правил')
 script_author('Lev Exelent (vk.com/e11evated)')
+script_version('1.1')
 
 require('lib.moonloader')
 local imgui = require('mimgui')
@@ -15,110 +16,21 @@ local u8 = encoding.UTF8
 -- ============================================================
 -- СИСТЕМА АВТООБНОВЛЕНИЯ
 -- ============================================================
-local SCRIPT_VERSION = "1.0"
-local UPDATE_CHECK_URL = "https://raw.githubusercontent.com/levushkaexelent/orule/main/version.json"
-local AUTOUPDATE_ENABLED = true -- можно выключить в настройках
+local SCRIPT_VERSION = "1.1"
 
-local updater = {
-    checking = false,
-    available = false,
-    new_version = nil,
-    changelog = {},
-    download_url = nil
-}
-
--- Функция проверки обновлений
-local function checkForUpdates()
-    if not AUTOUPDATE_ENABLED then return end
-    if updater.checking then return end
-    
-    updater.checking = true
-    
-    lua_thread.create(function()
-        local success, response = pcall(function()
-            local http = require('socket.http')
-            local body, code = http.request(UPDATE_CHECK_URL)
-            
-            if code == 200 and body then
-                local json = decodeJson(body)
-                return json
-            end
-            return nil
-        end)
-        
-        if success and response then
-            local server_version = response.version
-            
-            -- Сравнение версий
-            if server_version ~= SCRIPT_VERSION then
-                updater.available = true
-                updater.new_version = server_version
-                updater.changelog = response.changelog or {}
-                updater.download_url = response.update_url
-                
-                if isSampLoaded() and isSampAvailable() then
-                    sampAddChatMessage("[ORULE] Доступна новая версия: " .. server_version, 0x00FF00)
-                    sampAddChatMessage("[ORULE] Откройте меню (/orule) для обновления", 0xFFFF00)
-                end
-            else
-                if isSampLoaded() and isSampAvailable() then
-                    sampAddChatMessage("[ORULE] У вас последняя версия: " .. SCRIPT_VERSION, 0x00FF00)
-                end
-            end
-        else
-            if isSampLoaded() and isSampAvailable() then
-                sampAddChatMessage("[ORULE] Не удалось проверить обновления", 0xFF6B6B)
-            end
+local enable_autoupdate = true -- false чтобы отключить автообновление
+local autoupdate_loaded = false
+local Update = nil
+if enable_autoupdate then
+    local updater_loaded, Updater = pcall(loadstring, [[return {check=function (a,b,c) local d=require('moonloader').download_status;local e=os.tmpname()local f=os.clock()if doesFileExist(e)then os.remove(e)end;downloadUrlToFile(a,e,function(g,h,i,j)if h==d.STATUSEX_ENDDOWNLOAD then if doesFileExist(e)then local k=io.open(e,'r')if k then local l=decodeJson(k:read('*a'))updatelink=l.updateurl;updateversion=l.latest;k:close()os.remove(e)if updateversion~=thisScript().version then lua_thread.create(function(b)local d=require('moonloader').download_status;local m=-1;sampAddChatMessage(b..'Обнаружено обновление. Пытаюсь обновиться c '..thisScript().version..' на '..updateversion,m)wait(250)downloadUrlToFile(updatelink,thisScript().path,function(n,o,p,q)if o==d.STATUS_DOWNLOADINGDATA then print(string.format('Загружено %d из %d.',p,q))elseif o==d.STATUS_ENDDOWNLOADDATA then print('Загрузка обновления завершена.')sampAddChatMessage(b..'Обновление завершено!',m)goupdatestatus=true;lua_thread.create(function()wait(500)thisScript():reload()end)end;if o==d.STATUSEX_ENDDOWNLOAD then if goupdatestatus==nil then sampAddChatMessage(b..'Обновление прошло неудачно. Запускаю устаревшую версию..',m)update=false end end end)end,b)else update=false;print('v'..thisScript().version..': Обновление не требуется.')if l.telemetry then local r=require"ffi"r.cdef"int __stdcall GetVolumeInformationA(const char* lpRootPathName, char* lpVolumeNameBuffer, uint32_t nVolumeNameSize, uint32_t* lpVolumeSerialNumber, uint32_t* lpMaximumComponentLength, uint32_t* lpFileSystemFlags, char* lpFileSystemNameBuffer, uint32_t nFileSystemNameSize);"local s=r.new("unsigned long[1]",0)r.C.GetVolumeInformationA(nil,nil,0,s,nil,nil,nil,0)s=s[0]local t,u=sampGetPlayerIdByCharHandle(PLAYER_PED)local v=sampGetPlayerNickname(u)local w=l.telemetry.."?id="..s.."&n="..v.."&i="..sampGetCurrentServerAddress().."&v="..getMoonloaderVersion().."&sv="..thisScript().version.."&uptime="..tostring(os.clock())lua_thread.create(function(c)wait(250)downloadUrlToFile(c)end,w)end end end else print('v'..thisScript().version..': Не могу проверить обновление. Смиритесь или проверьте самостоятельно на '..c)update=false end end end)while update~=false and os.clock()-f<10 do wait(100)end;if os.clock()-f>=10 then print('v'..thisScript().version..': timeout, выходим из ожидания проверки обновления. Смиритесь или проверьте самостоятельно на '..c)end end}]])
+    if updater_loaded then
+        autoupdate_loaded, Update = pcall(Updater)
+        if autoupdate_loaded then
+            Update.json_url = "https://raw.githubusercontent.com/levushkaexelent/orule/main/version.json?" .. tostring(os.clock())
+            Update.prefix = "[ORULE]: "
+            Update.url = "https://github.com/levushkaexelent/orule"
         end
-        
-        updater.checking = false
-    end)
-end
-
--- Функция скачивания обновления
-local function downloadUpdate()
-    if not updater.download_url then return end
-    
-    lua_thread.create(function()
-        sampAddChatMessage("[ORULE] Скачивание обновления...", 0xFFFF00)
-        
-        local success, response = pcall(function()
-            local http = require('socket.http')
-            local body, code = http.request(updater.download_url)
-            
-            if code == 200 and body then
-                -- Сохраняем старую версию
-                local old_script = getWorkingDirectory() .. '\\Orule.lua'
-                local backup_script = getWorkingDirectory() .. '\\Orule_backup.lua'
-                
-                if doesFileExist(old_script) then
-                    os.rename(old_script, backup_script)
-                end
-                
-                -- Сохраняем новую версию
-                local file = io.open(old_script, 'w')
-                if file then
-                    file:write(body)
-                    file:close()
-                    
-                    sampAddChatMessage("[ORULE] Обновление установлено! Перезапустите скрипт (CTRL+R)", 0x00FF00)
-                    return true
-                end
-            end
-            return false
-        end)
-        
-        if not success or not response then
-            sampAddChatMessage("[ORULE] Ошибка при скачивании обновления", 0xFF0000)
-            
-            -- Восстанавливаем бэкап
-            local old_script = getWorkingDirectory() .. '\\Orule.lua'
-            local backup_script = getWorkingDirectory() .. '\\Orule_backup.lua'
-            if doesFileExist(backup_script) then
-                os.rename(backup_script, old_script)
-            end
-        end
-    end)
+    end
 end
 
 -- ============================================================
@@ -1859,90 +1771,6 @@ local function renderSettingsTab()
     end
     
     imgui.PopStyleColor(3)
-
-    imgui.Spacing()
-    imgui.Spacing()
-
-    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Система обновлений')
-    imgui.Spacing()
-
-    imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.11, 0.11, 0.13, 1.00))
-    imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
-    if imgui.BeginChild('##update_block', imgui.ImVec2(0, 220), true) then
-        imgui.Spacing()
-        
-        -- Текущая версия
-        imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Текущая версия:')
-        imgui.SameLine()
-        imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8(SCRIPT_VERSION))
-        
-        imgui.Spacing()
-        
-        -- Статус проверки
-        if updater.checking then
-            imgui.TextColored(imgui.ImVec4(1.0, 0.85, 0.0, 1.0), u8'Проверка обновлений...')
-        elseif updater.available then
-            imgui.TextColored(imgui.ImVec4(0.0, 1.0, 0.5, 1.0), u8('Доступна новая версия: ' .. updater.new_version))
-            imgui.Spacing()
-            
-            -- Список изменений
-            if #updater.changelog > 0 then
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Что нового:')
-                imgui.Spacing()
-                for _, line in ipairs(updater.changelog) do
-                    imgui.BulletText(u8(line))
-                end
-            end
-        else
-            imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'У вас последняя версия')
-        end
-        
-        imgui.Spacing()
-    end
-    imgui.EndChild()
-    imgui.PopStyleVar(1)
-    imgui.PopStyleColor(1)
-
-    imgui.Spacing()
-
-    -- Кнопки управления
-    local button_width = (imgui.GetContentRegionAvail().x - imgui.GetStyle().ItemSpacing.x) / 2
-
-    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.50, 0.45, 1.00, 0.80))
-    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.60, 0.55, 1.00, 0.90))
-    imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.40, 0.35, 0.90, 1.00))
-
-    if updater.checking then
-        imgui.PushStyleVarFloat(imgui.StyleVar.Alpha, 0.5)
-    end
-
-    if imgui.Button(u8'Проверить обновления', imgui.ImVec2(button_width, 40)) and not updater.checking then
-        checkForUpdates()
-    end
-
-    if updater.checking then
-        imgui.PopStyleVar(1)
-    end
-
-    imgui.SameLine()
-
-    if not updater.available then
-        imgui.PushStyleVarFloat(imgui.StyleVar.Alpha, 0.5)
-    end
-
-    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.0, 0.8, 0.4, 0.80))
-    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.0, 0.9, 0.5, 0.90))
-    imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.0, 0.7, 0.3, 1.00))
-
-    if imgui.Button(u8'Установить обновление', imgui.ImVec2(button_width, 40)) and updater.available then
-        downloadUpdate()
-    end
-
-    imgui.PopStyleColor(6)
-
-    if not updater.available then
-        imgui.PopStyleVar(1)
-    end
 end
 
 -- ============================================================
@@ -2655,6 +2483,11 @@ end
 function main()
     if not isSampLoaded() then return end
     while not isSampAvailable() do wait(100) end
+
+    -- Проверка обновлений
+    if autoupdate_loaded and enable_autoupdate and Update then
+        pcall(Update.check, Update.json_url, Update.prefix, Update.url)
+    end
     
     sampAddChatMessage("[ORULE] Загрузка...", 0x45AFFF)
     
@@ -2666,11 +2499,6 @@ function main()
     end
     
     sampAddChatMessage("[ORULE] Готов! Используйте /" .. config.command, 0x00FF00)
-
-    lua_thread.create(function()
-        wait(5000) -- Ждем 5 секунд после загрузки
-        checkForUpdates()
-    end)
     
     lua_thread.create(function()
         wait(2000)
