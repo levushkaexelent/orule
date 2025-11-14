@@ -2731,43 +2731,38 @@ function main()
     -- ============================================================
     -- АВТОЗАГРУЗКА РЕСУРСОВ С GITHUB
     -- ============================================================
-    function downloadResource(url, path, resource_type, force_update)
+    function downloadResource(url, path, resource_type)
         local dir = path:match('(.+)\\[^\\]+$')
         if dir and not doesDirectoryExist(dir) then
             createDirectory(dir)
         end
         
-        local file_exists = doesFileExist(path)
-        
         -- Логика для текстовых файлов
         if resource_type == "text" then
             if config.autoUpdateTexts then
-                -- Включено автообновление текстов
-                if force_update or not file_exists then
-                    print('[ORULE] ' .. (file_exists and 'Обновляю' or 'Загружаю') .. ' текст: ' .. path:match('([^\\]+)$'))
-                    downloadUrlToFile(url, path)
-                    return true
-                end
+                -- Всегда скачиваем
+                print('[ORULE] Обновляю текст с GitHub: ' .. path:match('([^\\]+)$'))
+                downloadUrlToFile(url, path)
+                return true
             else
-                -- Выключено автообновление текстов - скачиваем только если нет
-                if not file_exists then
-                    print('[ORULE] Загружаю текст: ' .. path:match('([^\\]+)$'))
+                -- Скачиваем только если файла нет
+                if not doesFileExist(path) then
+                    print('[ORULE] Создаю текст (первый запуск): ' .. path:match('([^\\]+)$'))
                     downloadUrlToFile(url, path)
                     return true
                 else
-                    print('[ORULE] Пропускаю текст (автообновление выкл): ' .. path:match('([^\\]+)$'))
+                    print('[ORULE] Пропускаю (автообновление выкл): ' .. path:match('([^\\]+)$'))
+                    return false
                 end
             end
-            return false
         end
         
-        -- Для шрифтов и картинок - всегда обновляем если force_update=true
-        if force_update or not file_exists then
-            print('[ORULE] ' .. (file_exists and 'Обновляю' or 'Загружаю') .. ': ' .. path:match('([^\\]+)$'))
+        -- Для шрифтов и картинок
+        if not doesFileExist(path) then
+            print('[ORULE] Загружаю: ' .. path:match('([^\\]+)$'))
             downloadUrlToFile(url, path)
             return true
         end
-        
         return false
     end
 
