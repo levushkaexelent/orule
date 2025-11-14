@@ -1513,7 +1513,7 @@ local function renderRulesTab()
         imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
         imgui.PushStyleVarFloat(imgui.StyleVar.ChildBorderSize, 1.5)
         
-        if imgui.BeginChild('##rule_card_' .. i, imgui.ImVec2(0, config.ruleCardHeight), true) then
+        if imgui.BeginChild('##rule_card_' .. i, imgui.ImVec2(-20, config.ruleCardHeight), true) then
             imgui.Spacing()
             imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.95, 0.95, 1.00, 1.00))
             imgui.Text(u8(rule.name or 'Без названия'))
@@ -1632,7 +1632,7 @@ local function renderRadialMenuTab()
     imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
     imgui.PushStyleVarFloat(imgui.StyleVar.ChildBorderSize, 1.5)
 
-    if imgui.BeginChild('##radial_global_settings', imgui.ImVec2(0, 118), true) then
+    if imgui.BeginChild('##radial_global_settings', imgui.ImVec2(-20, 118), true) then
         imgui.Spacing()
         imgui.TextColored(imgui.ImVec4(0.95, 0.95, 1.00, 1.00), u8'Глобальные настройки')
         imgui.Spacing()
@@ -1671,7 +1671,7 @@ local function renderRadialMenuTab()
         imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
         imgui.PushStyleVarFloat(imgui.StyleVar.ChildBorderSize, 1.5)
 
-        if imgui.BeginChild('##radial_button_card_' .. i, imgui.ImVec2(0, 167), true) then
+        if imgui.BeginChild('##radial_button_card_' .. i, imgui.ImVec2(-20, 167), true) then
             imgui.Spacing()
             imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.95, 0.95, 1.00, 1.00))
             imgui.Text(u8('Кнопка #' .. i))
@@ -1733,7 +1733,7 @@ local function renderRadialMenuTab()
 
     imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.08, 0.08, 0.12, 1.00))
     imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
-    if imgui.BeginChild('##radial_info', imgui.ImVec2(0, 499), true) then
+    if imgui.BeginChild('##radial_info', imgui.ImVec2(-20, 499), true) then
         imgui.Spacing()
         imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Информация о действиях кнопок')
         imgui.Spacing()
@@ -1792,7 +1792,7 @@ local function renderSettingsTab()
     imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Команда для открытия меню:')
     imgui.Spacing()
     
-    imgui.PushItemWidth(-1)
+    imgui.PushItemWidth(-20)
     imgui.InputText('##command', commandBuf, 32)
     imgui.PopItemWidth()
     if imgui.IsItemHovered() then 
@@ -1829,7 +1829,7 @@ local function renderSettingsTab()
         imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.40, 0.35, 0.90, 1.00))
     end
     
-    if imgui.Button(bind_text_global, imgui.ImVec2(-1, 40)) and not is_blocked_global and not is_capturing_global then
+    if imgui.Button(bind_text_global, imgui.ImVec2(-20, 40)) and not is_blocked_global and not is_capturing_global then
         key_capture_mode, key_capture_type = {}, "global"
     end
     imgui.PopStyleColor(3)
@@ -1851,7 +1851,7 @@ local function renderSettingsTab()
             imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.70, 0.25, 0.25, 1.00))
         end
         
-        if imgui.Button(u8'Сбросить клавишу##reset_global', imgui.ImVec2(-1, 40)) and not is_capturing_any then
+        if imgui.Button(u8'Сбросить клавишу##reset_global', imgui.ImVec2(-20, 40)) and not is_capturing_any then
             config.globalHotkey = 0
             saveConfig()
         end
@@ -1870,7 +1870,7 @@ local function renderSettingsTab()
 
     imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Прозрачность фона:')
     local alpha_val = imgui.new.float[1](config.overlayBgAlpha)
-    imgui.PushItemWidth(-1)
+    imgui.PushItemWidth(-20)
     if imgui.SliderFloat('##alpha', alpha_val, 0.0, 1.0, u8'%.2f') and not is_capturing_any then 
         config.overlayBgAlpha = alpha_val[0]
         saveConfig() 
@@ -1882,7 +1882,7 @@ local function renderSettingsTab()
     
     imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Размер шрифта:')
     local font_val = imgui.new.float[1](config.fontSize)
-    imgui.PushItemWidth(-1)
+    imgui.PushItemWidth(-20)
     if imgui.SliderFloat('##fontsize', font_val, 12.0, 32.0, u8'%.0f') and not is_capturing_any then 
         config.fontSize = font_val[0]
         saveConfig() 
@@ -1894,7 +1894,7 @@ local function renderSettingsTab()
     
     imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Расстояние между строками:')
     local spacing_val = imgui.new.float[1](config.lineSpacing)
-    imgui.PushItemWidth(-1)
+    imgui.PushItemWidth(-20)
     if imgui.SliderFloat('##linespacing', spacing_val, 0.0, 1.0, u8'%.2f') and not is_capturing_any then 
         config.lineSpacing = spacing_val[0]
         saveConfig() 
@@ -1945,7 +1945,7 @@ local function renderSettingsTab()
         imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.40, 0.35, 0.90, 1.00))
     end
     
-    if imgui.Button(u8'Сохранить настройки команды', imgui.ImVec2(-1, 45)) and not is_capturing_any then
+    if imgui.Button(u8'Сохранить настройки команды', imgui.ImVec2(-20, 45)) and not is_capturing_any then
         local new_command = ffi.string(commandBuf)
         local valid, error_msg = validateCommand(new_command)
         
@@ -2020,7 +2020,7 @@ local function renderInfoWindow()
 
         imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.0, 0.0, 0.0, 0.0))
         if imgui.BeginChild('##info_content', imgui.ImVec2(0, -61), false) then
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Добро пожаловать!')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Добро пожаловать в ORULE!')
             imgui.Spacing()
             imgui.PushTextWrapPos(0)
             imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Спасибо, что выбрали ORULE - самый функциональный менеджер правил для MoonLoader!')
@@ -2035,11 +2035,15 @@ local function renderInfoWindow()
             imgui.Spacing()
             imgui.BulletText(u8'Overlay-интерфейс - просмотр правил поверх игры без сворачивания')
             imgui.BulletText(u8'Горячие клавиши - назначьте свои биндки для каждого правила')
-            imgui.BulletText(u8'Радиальное меню - быстрый доступ к /me /do командам')
+            imgui.BulletText(u8'Радиальное меню - быстрый доступ к командам через среднюю кнопку мыши')
             imgui.BulletText(u8'Умный поиск - находит информацию с учетом синонимов и контекста')
             imgui.BulletText(u8'Режим удержания - показывайте правило только пока удерживаете клавишу')
-            imgui.BulletText(u8'Настройка внешнего вида - шрифт, прозрачность, размеры')
+            imgui.BulletText(u8'Настройка внешнего вида - шрифт, прозрачность, размеры окон')
             imgui.BulletText(u8'Карты радаров и фотографии территорий - все под рукой')
+            imgui.BulletText(u8'Автообновление - скрипт и ресурсы обновляются автоматически')
+            imgui.BulletText(u8'9 готовых правил для МВД с актуальной информацией')
+            imgui.BulletText(u8'Полная законодательная база (Конституция, УК, КоАП, ФЗ)')
+            imgui.BulletText(u8'Информация о закрытых территориях всех фракций')
 
             imgui.Spacing()
             imgui.Separator()
@@ -2047,18 +2051,53 @@ local function renderInfoWindow()
 
             imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Быстрый старт')
             imgui.Spacing()
-            imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Шаг 1:')
-            imgui.SameLine(0, 5)
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Перейдите во вкладку "Правила" и назначьте горячие клавиши')
-            imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Шаг 2:')
-            imgui.SameLine(0, 5)
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Настройте внешний вид overlay во вкладке "Настройки"')
-            imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Шаг 3:')
-            imgui.SameLine(0, 5)
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Нажмите назначенную клавишу для открытия overlay')
-            imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Шаг 4:')
-            imgui.SameLine(0, 5)
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Используйте поиск для быстрого нахождения информации')
+            
+            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.11, 0.11, 0.13, 0.95))
+            imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
+            if imgui.BeginChild('##quick_start', imgui.ImVec2(0, 210), true) then
+                imgui.Spacing()
+                imgui.Indent(10)
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 1:')
+                imgui.SameLine(0, 5)
+                imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Перейдите во вкладку "Правила" и назначьте горячие клавиши')
+                imgui.PopTextWrapPos()
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 2:')
+                imgui.SameLine(0, 5)
+                imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Настройте радиальное меню во вкладке "Радиальное меню"')
+                imgui.PopTextWrapPos()
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 3:')
+                imgui.SameLine(0, 5)
+                imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Настройте внешний вид overlay во вкладке "Настройки"')
+                imgui.PopTextWrapPos()
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 4:')
+                imgui.SameLine(0, 5)
+                imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Нажмите назначенную клавишу для открытия overlay с правилом')
+                imgui.PopTextWrapPos()
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 5:')
+                imgui.SameLine(0, 5)
+                imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Используйте поиск для быстрого нахождения нужной информации')
+                imgui.PopTextWrapPos()
+                
+                imgui.Unindent(10)
+                imgui.Spacing()
+            end
+            imgui.EndChild()
+            imgui.PopStyleVar(1)
+            imgui.PopStyleColor(1)
 
             imgui.Spacing()
             imgui.Separator()
@@ -2066,24 +2105,46 @@ local function renderInfoWindow()
 
             imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Управление')
             imgui.Spacing()
-            imgui.Columns(2, nil, false)
-            imgui.SetColumnWidth(0, 250)
-            imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'/' .. u8(config.command))
-            imgui.NextColumn()
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Открыть/закрыть меню настроек')
-            imgui.NextColumn()
-            imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'Средняя кнопка мыши')
-            imgui.NextColumn()
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Радиальное меню (удерживать)')
-            imgui.NextColumn()
-            imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'ESC')
-            imgui.NextColumn()
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Закрыть overlay с правилом')
-            imgui.NextColumn()
-            imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'Назначенная клавиша')
-            imgui.NextColumn()
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Открыть/закрыть конкретное правило')
-            imgui.Columns(1)
+            
+            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.11, 0.11, 0.13, 0.95))
+            imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
+            if imgui.BeginChild('##controls', imgui.ImVec2(0, 180), true) then
+                imgui.Spacing()
+                imgui.Indent(10)
+                
+                imgui.Columns(2, nil, false)
+                imgui.SetColumnWidth(0, 250)
+                
+                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'/' .. u8(config.command))
+                imgui.NextColumn()
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Открыть/закрыть меню настроек')
+                imgui.NextColumn()
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'Средняя кнопка мыши')
+                imgui.NextColumn()
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Радиальное меню (удерживать)')
+                imgui.NextColumn()
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'ESC')
+                imgui.NextColumn()
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Закрыть overlay с правилом')
+                imgui.NextColumn()
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'Назначенная клавиша')
+                imgui.NextColumn()
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Открыть/закрыть конкретное правило')
+                imgui.NextColumn()
+                
+                imgui.Columns(1)
+                imgui.Unindent(10)
+                imgui.Spacing()
+            end
+            imgui.EndChild()
+            imgui.PopStyleVar(1)
+            imgui.PopStyleColor(1)
 
             imgui.Spacing()
             imgui.Separator()
@@ -2095,26 +2156,58 @@ local function renderInfoWindow()
             imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Удерживайте среднюю кнопку мыши и выберите действие.')
             imgui.PopTextWrapPos()
             imgui.Spacing()
-            imgui.Indent(20)
-            imgui.BulletText(u8'Мегафон - предупреждение водителю через громкоговоритель')
-            imgui.BulletText(u8'Миранда - чтение прав задержанному')
-            imgui.BulletText(u8'Обыск - проведение обыска с нательной камерой')
-            imgui.BulletText(u8'Удостоверение - предъявление служебного удостоверения')
-            imgui.BulletText(u8'Фоторобот - установление личности по фотографии')
-            imgui.BulletText(u8'Тонировка - проверка тонировки тауметром')
-            imgui.Unindent(20)
+            
+            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.11, 0.11, 0.13, 0.95))
+            imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
+            if imgui.BeginChild('##radial_actions', imgui.ImVec2(0, 385), true) then
+                imgui.Spacing()
+                imgui.Indent(10)
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 1 - Мегафон')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Предупреждение водителю через громкоговоритель')
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 2 - Миранда')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Чтение прав задержанному')
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 3 - Обыск')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Проведение обыска с нательной камерой и /frisk')
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 4 - Удостоверение')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Предъявление служебного удостоверения и /doc')
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 5 - Фоторобот')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Установление личности по фотографии')
+                imgui.Spacing()
+                
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 6 - Тонировка')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Проверка тонировки тауметром')
+                
+                imgui.Unindent(10)
+                imgui.Spacing()
+            end
+            imgui.EndChild()
+            imgui.PopStyleVar(1)
+            imgui.PopStyleColor(1)
 
             imgui.Spacing()
             imgui.Separator()
             imgui.Spacing()
 
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Что нового в версии 1.0')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Что нового в версии 1.1')
             imgui.Spacing()
             imgui.BulletText(u8'Первый публичный релиз')
             imgui.BulletText(u8'9 готовых правил для МВД с актуальной информацией')
             imgui.BulletText(u8'Полная законодательная база (Конституция, УК, КоАП, ФЗ)')
             imgui.BulletText(u8'Информация о закрытых территориях всех фракций')
-            imgui.BulletText(u8'Интерактивные карты и фотографии')
+            imgui.BulletText(u8'Интерактивные карты радаров и фотографии территорий')
+            imgui.BulletText(u8'Радиальное меню с настраиваемыми кнопками')
+            imgui.BulletText(u8'Умный поиск с синонимами')
+            imgui.BulletText(u8'Автообновление скрипта и ресурсов')
+            imgui.BulletText(u8'Селективное обновление текстовых файлов')
             imgui.BulletText(u8'Гибкая система настройки под себя')
 
             imgui.Spacing()
@@ -2128,6 +2221,28 @@ local function renderInfoWindow()
             imgui.BulletText(u8'Настройте прозрачность overlay под свои предпочтения')
             imgui.BulletText(u8'Все файлы правил находятся в папке moonloader/OverlayRules/texts/')
             imgui.BulletText(u8'Вы можете редактировать тексты правил в любом текстовом редакторе')
+            imgui.BulletText(u8'Отключите "Автообновление текстов" если изменяли файлы правил')
+            
+            imgui.Spacing()
+            imgui.Separator()
+            imgui.Spacing()
+            
+            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.11, 0.11, 0.13, 0.95))
+            imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
+            if imgui.BeginChild('##warning', imgui.ImVec2(0, 136), true) then
+                imgui.Spacing()
+                imgui.Indent(10)
+                imgui.TextColored(imgui.ImVec4(1.00, 0.70, 0.30, 1.00), u8'ВАЖНО:')
+                imgui.Spacing()
+                imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
+                imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Если вы изменили текстовые файлы правил, обязательно отключите опцию "Автоматически обновлять текстовые файлы" в настройках, иначе ваши изменения будут перезаписаны при следующем запуске скрипта.')
+                imgui.PopTextWrapPos()
+                imgui.Unindent(10)
+                imgui.Spacing()
+            end
+            imgui.EndChild()
+            imgui.PopStyleVar(1)
+            imgui.PopStyleColor(1)
         end
         imgui.EndChild()
         imgui.PopStyleColor(1)
@@ -2272,7 +2387,7 @@ local function renderWindow()
                 
                 local content_height = imgui.GetContentRegionAvail().y
                 imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.0, 0.0, 0.0, 0.0))
-                if imgui.BeginChild('##settings_scroll', imgui.ImVec2(0, content_height), false) then
+                if imgui.BeginChild('##settings_scroll', imgui.ImVec2(-20, content_height), false) then
                     imgui.Spacing()
                     renderSettingsTab()
                 end
