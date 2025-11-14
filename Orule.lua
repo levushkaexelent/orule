@@ -2451,8 +2451,8 @@ local function renderRadialMenu()
 
         local midAngle = angleStart + step * 0.5
         local label = enabled_buttons[i].name or ""
-        -- label уже в CP1251, не нужно конвертировать
-        local label_u8 = label
+        -- Конвертируем CP1251 → UTF-8 для ImGui
+        local label_u8 = u8(label)
         local textSize = imgui.CalcTextSize(label_u8)
         local textRadius = (innerRadius + outerRadius) * 0.5
         local textPos = imgui.ImVec2(center.x + math.cos(midAngle) * textRadius - textSize.x * 0.5,
