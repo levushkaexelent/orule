@@ -4,10 +4,10 @@
     "changelog_url": "https://raw.githubusercontent.com/levushkaexelent/orule/main/changelog.txt",
     "changelog": [
       "v1.0 (14.11.2025)",
-      "- Первый публичный релиз",
-      "- 9 правил для МВД",
-      "- Радиальное меню",
-      "- Умный поиск"
+      "- РџРµСЂРІС‹Р№ РїСѓР±Р»РёС‡РЅС‹Р№ СЂРµР»РёР·",
+      "- 9 РїСЂР°РІРёР» РґР»СЏ РњР’Р”",
+      "- Р Р°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ",
+      "- РЈРјРЅС‹Р№ РїРѕРёСЃРє"
     ],
     "required_files": [
       "fonts/EagleSans-Regular.ttf",
@@ -15,3 +15,5 @@
       "texts/police_main.txt"
     ]
   }
+
+  
