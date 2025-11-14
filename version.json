@@ -1,0 +1,17 @@
+{
+    "version": "1.0",
+    "update_url": "https://raw.githubusercontent.com/levushkaexelent/orule/main/Orule.lua",
+    "changelog_url": "https://raw.githubusercontent.com/levushkaexelent/orule/main/changelog.txt",
+    "changelog": [
+      "v1.0 (14.11.2025)",
+      "- Первый публичный релиз",
+      "- 9 правил для МВД",
+      "- Радиальное меню",
+      "- Умный поиск"
+    ],
+    "required_files": [
+      "fonts/EagleSans-Regular.ttf",
+      "images/radar_map.png",
+      "texts/police_main.txt"
+    ]
+  }
