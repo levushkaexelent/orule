@@ -893,13 +893,13 @@ end
 
 local function initRadialBuffers()
     for i, btn in ipairs(radialMenu.buttons) do
-        local name = btn.name or ("Кнопка " .. i)
-        ffi.fill(radialButtonBuffers[i], 64, 0)
-        
-        -- Просто копируем как есть (уже должно быть в CP1251)
-        if #name > 0 then
-            ffi.copy(radialButtonBuffers[i], name, math.min(#name, 63))
+        local name_cp1251 = btn.name or ("Кнопка " .. i)
+        -- Убеждаемся что это CP1251
+        if encoding.UTF8 and pcall(encoding.UTF8.decode, encoding.UTF8, name_cp1251) then
+            -- Если это UTF-8, конвертируем
+            name_cp1251 = encoding.UTF8:decode(name_cp1251)
         end
+        ffi.copy(radialButtonBuffers[i], name_cp1251, math.min(#name_cp1251, 63))
     end
 end
 
@@ -1079,12 +1079,18 @@ imgui.OnInitialize(function()
     local radar_map_path = IMAGES_DIR .. '\\radar_map.png'
     if doesFileExist(radar_map_path) then
         radar_map_texture = imgui.CreateTextureFromFile(radar_map_path)
+        if not radar_map_texture then
+            print('[ORULE] Ошибка загрузки текстуры: radar_map.png')
+        end
     end
 
     for i = 1, 20 do
         local ter_path = IMAGES_DIR .. '\\ter_' .. i .. '.jpg'
         if doesFileExist(ter_path) then
             territory_textures[i] = imgui.CreateTextureFromFile(ter_path)
+            if not territory_textures[i] then
+                print('[ORULE] Ошибка загрузки текстуры: ter_' .. i .. '.jpg')
+            end
         end
     end
 end)
@@ -1946,7 +1952,7 @@ local function renderInfoWindow()
             if title_font then imgui.PushFont(title_font) end
 
             local window_width = imgui.GetWindowWidth()
-            local title_text = u8'ORULE v1.0'
+            local title_text = u8('ORULE v' .. SCRIPT_VERSION)
             local title_width = imgui.CalcTextSize(title_text).x
 
             imgui.SetCursorPosY(15)
@@ -2164,7 +2170,7 @@ local function renderWindow()
             local window_width = imgui.GetWindowWidth()
             local available_width = window_width - 40
 
-            local title_text = u8'ORULE'
+            local title_text = u8('ORULE v' .. SCRIPT_VERSION)
             local title_width = imgui.CalcTextSize(title_text).x
             imgui.SetCursorPosX(20 + (available_width - title_width) * 0.5)
 
@@ -2612,12 +2618,12 @@ end
 -- ГЛАВНАЯ ЛОГИКА
 -- ============================================================
 local function cmd_help()
-    sampAddChatMessage("???????????????????????????", 0x45AFFF)
-    sampAddChatMessage("Orule - Менеджер правил v1.0", 0x45AFFF)
+    sampAddChatMessage("======================", 0x45AFFF)
+    sampAddChatMessage("Orule - Менеджер правил v1.1", 0x45AFFF)
     sampAddChatMessage("/" .. config.command .. " - открыть меню", 0xFFFFFF)
     sampAddChatMessage("Средняя кнопка мыши (удержание) - радиальное меню", 0xFFFFFF)
     sampAddChatMessage("Автор: Lev Exelent", 0xFFFFFF)
-    sampAddChatMessage("???????????????????????????", 0x45AFFF)
+    sampAddChatMessage("======================", 0x45AFFF)
 end
 
 local function toggle()
@@ -2630,9 +2636,26 @@ local function toggle()
     end
 end
 
+local function checkMoonLoaderVersion()
+    local ml_version = getMoonloaderVersion()
+    if ml_version < 026 then
+        print('[ORULE] Ошибка: требуется MoonLoader 0.26+')
+        print('[ORULE] Текущая версия: ' .. string.format('0.%d', ml_version))
+        if isSampLoaded() and isSampAvailable() then
+            sampAddChatMessage('[ORULE] Ошибка: требуется MoonLoader 0.26+', 0xFF0000)
+        end
+        thisScript():unload()
+    end
+end
+
 function main()
-    if not isSampLoaded() then return end
+    if not isSampLoaded() then 
+        print('[ORULE] Ошибка: SA-MP не загружен')
+        return 
+    end
     while not isSampAvailable() do wait(100) end
+
+    checkMoonLoaderVersion()
 
     -- Проверка обновлений
     if autoupdate_loaded and enable_autoupdate and Update then
@@ -2677,7 +2700,7 @@ function main()
     -- ============================================================
     -- АВТОЗАГРУЗКА РЕСУРСОВ С GITHUB
     -- ============================================================
-    function downloadResource(url, path)
+    function downloadResource(url, path, callback)
         local dir = path:match('(.+)\\[^\\]+$')
         if dir and not doesDirectoryExist(dir) then
             createDirectory(dir)
@@ -2685,7 +2708,11 @@ function main()
         
         if not doesFileExist(path) then
             print('[ORULE] Загружаю: ' .. path:match('([^\\]+)$'))
-            downloadUrlToFile(url, path)
+            downloadUrlToFile(url, path, function(id, status, p1, p2)
+                if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
+                    if callback then callback(true) end
+                end
+            end)
             return true
         end
         return false
