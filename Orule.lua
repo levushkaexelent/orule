@@ -14,10 +14,23 @@ encoding.default = 'CP1251'
 local u8 = encoding.UTF8
 
 -- ============================================================
+-- СИСТЕМА ЛОГИРОВАНИЯ
+-- ============================================================
+local LOG_FILE = getWorkingDirectory() .. '\\OverlayRules\\orule_errors.log'
+
+local function logError(message)
+    local file = io.open(LOG_FILE, 'a')
+    if file then
+        local timestamp = os.date('%Y-%m-%d %H:%M:%S')
+        file:write(string.format('[%s] %s\n', timestamp, message))
+        file:close()
+    end
+end
+
+-- ============================================================
 -- СИСТЕМА АВТООБНОВЛЕНИЯ
 -- ============================================================
 local SCRIPT_VERSION = "1.1"
-
 local enable_autoupdate = true
 local autoupdate_loaded = false
 local Update = nil
@@ -25,150 +38,137 @@ local Update = nil
 if enable_autoupdate then
     local updater_loaded, Updater = pcall(loadstring, [[
         return {
-            check = function(a, b, c)
-                local d = require('moonloader').download_status
-                local e = os.tmpname()
-                local f = os.clock()
+            check = function(json_url, prefix, repo_url)
+                local dlstatus = require('moonloader').download_status
+                local temp_json = os.tmpname()
+                local script_path = thisScript().path
+                local backup_path = script_path .. '.backup'
                 
-                if doesFileExist(e) then os.remove(e) end
+                -- Создаем резервную копию
+                local function createBackup()
+                    local original = io.open(script_path, 'rb')
+                    if not original then return false end
+                    local content = original:read('*a')
+                    original:close()
+                    
+                    local backup = io.open(backup_path, 'wb')
+                    if not backup then return false end
+                    backup:write(content)
+                    backup:close()
+                    return true
+                end
                 
-                downloadUrlToFile(a, e, function(g, h, i, j)
-                    if h == d.STATUSEX_ENDDOWNLOAD then
-                        if doesFileExist(e) then
-                            local k = io.open(e, 'r')
-                            if k then
-                                local l = decodeJson(k:read('*a'))
-                                updatelink = l.updateurl
-                                updateversion = l.latest
-                                k:close()
-                                os.remove(e)
+                -- Восстанавливаем из резервной копии
+                local function restoreBackup()
+                    if not doesFileExist(backup_path) then return false end
+                    
+                    local backup = io.open(backup_path, 'rb')
+                    if not backup then return false end
+                    local content = backup:read('*a')
+                    backup:close()
+                    
+                    local original = io.open(script_path, 'wb')
+                    if not original then return false end
+                    original:write(content)
+                    original:close()
+                    
+                    os.remove(backup_path)
+                    return true
+                end
+                
+                if doesFileExist(temp_json) then os.remove(temp_json) end
+                
+                downloadUrlToFile(json_url, temp_json, function(id, status, p1, p2)
+                    if status == dlstatus.STATUSEX_ENDDOWNLOAD then
+                        if doesFileExist(temp_json) then
+                            local json_file = io.open(temp_json, 'r')
+                            if json_file then
+                                local json_data = decodeJson(json_file:read('*a'))
+                                json_file:close()
+                                os.remove(temp_json)
                                 
-                                if updateversion ~= thisScript().version then
-                                    lua_thread.create(function(b)
-                                        local d = require('moonloader').download_status
-                                        local m = -1
-                                        sampAddChatMessage(b..'Обнаружено обновление. Пытаюсь обновиться c '..thisScript().version..' на '..updateversion, m)
-                                        wait(250)
-                                        
-                                        local temp_path = os.getenv('TEMP') .. '\\orule_update.lua'
-                                        
-                                        downloadUrlToFile(updatelink, temp_path, function(n, o, p, q)
-                                            if o == d.STATUS_DOWNLOADINGDATA then
-                                                print(string.format('Загружено %d из %d.', p, q))
-                                            elseif o == d.STATUS_ENDDOWNLOADDATA then
-                                                print('Загрузка завершена. Конвертирую кодировку...')
-                                                
-                                                lua_thread.create(function()
-                                                    wait(200)
-                                                    
-                                                    -- Читаем скачанный файл
-                                                    local temp_file = io.open(temp_path, 'rb')
-                                                    if not temp_file then
-                                                        sampAddChatMessage(b..'Ошибка: не могу открыть временный файл', m)
-                                                        update = false
-                                                        return
-                                                    end
-                                                    
-                                                    local utf8_content = temp_file:read('*a')
-                                                    temp_file:close()
-                                                    
-                                                    -- Убираем BOM если есть
-                                                    if utf8_content:sub(1, 3) == '\xEF\xBB\xBF' then
-                                                        utf8_content = utf8_content:sub(4)
-                                                    end
-                                                    
-                                                    -- Конвертируем UTF-8 -> CP1251 ВРУЧНУЮ
-                                                    local cp1251_content = {}
-                                                    local i = 1
-                                                    local len = #utf8_content
-                                                    
-                                                    while i <= len do
-                                                        local byte = utf8_content:byte(i)
-                                                        
-                                                        if byte < 128 then
-                                                            -- ASCII символ (не трогаем)
-                                                            table.insert(cp1251_content, string.char(byte))
-                                                            i = i + 1
-                                                        elseif byte >= 0xC0 and byte <= 0xDF then
-                                                            -- 2-байтовый UTF-8 символ
-                                                            if i + 1 <= len then
-                                                                local byte2 = utf8_content:byte(i + 1)
-                                                                local unicode = ((byte - 0xC0) * 64) + (byte2 - 0x80)
-                                                                
-                                                                -- Русские буквы А-Я (U+0410 - U+042F)
-                                                                if unicode >= 0x0410 and unicode <= 0x042F then
-                                                                    table.insert(cp1251_content, string.char(unicode - 0x0410 + 0xC0))
-                                                                -- Русские буквы а-я (U+0430 - U+044F)
-                                                                elseif unicode >= 0x0430 and unicode <= 0x044F then
-                                                                    table.insert(cp1251_content, string.char(unicode - 0x0430 + 0xE0))
-                                                                -- Ё (U+0401)
-                                                                elseif unicode == 0x0401 then
-                                                                    table.insert(cp1251_content, string.char(0xA8))
-                                                                -- ё (U+0451)
-                                                                elseif unicode == 0x0451 then
-                                                                    table.insert(cp1251_content, string.char(0xB8))
-                                                                else
-                                                                    -- Неизвестный символ, оставляем как есть
-                                                                    table.insert(cp1251_content, string.char(byte))
-                                                                end
-                                                                i = i + 2
-                                                            else
-                                                                i = i + 1
-                                                            end
-                                                        elseif byte >= 0xE0 and byte <= 0xEF then
-                                                            -- 3-байтовый UTF-8 символ (пропускаем)
-                                                            i = i + 3
-                                                        else
-                                                            -- Другое (пропускаем)
-                                                            i = i + 1
-                                                        end
-                                                    end
-                                                    
-                                                    local final_content = table.concat(cp1251_content)
-                                                    
-                                                    -- Сохраняем в основной файл
-                                                    local output_file = io.open(thisScript().path, 'wb')
-                                                    if output_file then
-                                                        output_file:write(final_content)
-                                                        output_file:close()
-                                                        os.remove(temp_path)
-                                                        
-                                                        print('Конвертация UTF-8 -> CP1251 завершена успешно')
-                                                        sampAddChatMessage(b..'Обновление завершено!', m)
-                                                        goupdatestatus = true
-                                                        
-                                                        wait(500)
-                                                        thisScript():reload()
-                                                    else
-                                                        sampAddChatMessage(b..'Ошибка: не могу записать файл', m)
-                                                        update = false
-                                                    end
-                                                end)
+                                if json_data and json_data.latest and json_data.updateurl then
+                                    local updateversion = json_data.latest
+                                    local updatelink = json_data.updateurl
+                                    
+                                    if updateversion ~= thisScript().version then
+                                        lua_thread.create(function()
+                                            sampAddChatMessage(prefix..'Обнаружено обновление '..thisScript().version..' → '..updateversion, -1)
+                                            wait(500)
+                                            
+                                            -- Создаем резервную копию
+                                            if not createBackup() then
+                                                sampAddChatMessage(prefix..'Ошибка: не удалось создать резервную копию', -1)
+                                                return
                                             end
                                             
-                                            if o == d.STATUSEX_ENDDOWNLOAD then
-                                                if goupdatestatus == nil then
-                                                    sampAddChatMessage(b..'Обновление прошло неудачно. Запускаю устаревшую версию..', m)
-                                                    update = false
+                                            local temp_update = os.getenv('TEMP') .. '\\orule_update.lua'
+                                            
+                                            downloadUrlToFile(updatelink, temp_update, function(id2, status2, p3, p4)
+                                                if status2 == dlstatus.STATUS_ENDDOWNLOADDATA then
+                                                    lua_thread.create(function()
+                                                        wait(300)
+                                                        
+                                                        local temp_file = io.open(temp_update, 'rb')
+                                                        if not temp_file then
+                                                            sampAddChatMessage(prefix..'Ошибка: не могу открыть загруженный файл', -1)
+                                                            restoreBackup()
+                                                            return
+                                                        end
+                                                        
+                                                        local utf8_content = temp_file:read('*a')
+                                                        temp_file:close()
+                                                        
+                                                        -- Убираем BOM
+                                                        if utf8_content:sub(1, 3) == '\xEF\xBB\xBF' then
+                                                            utf8_content = utf8_content:sub(4)
+                                                        end
+                                                        
+                                                        -- Используем встроенный декодер
+                                                        local success, cp1251_content = pcall(function()
+                                                            return encoding.UTF8:decode(utf8_content)
+                                                        end)
+                                                        
+                                                        if not success or not cp1251_content then
+                                                            sampAddChatMessage(prefix..'Ошибка конвертации кодировки', -1)
+                                                            restoreBackup()
+                                                            os.remove(temp_update)
+                                                            return
+                                                        end
+                                                        
+                                                        -- Сохраняем
+                                                        local output_file = io.open(script_path, 'wb')
+                                                        if not output_file then
+                                                            sampAddChatMessage(prefix..'Ошибка записи файла', -1)
+                                                            restoreBackup()
+                                                            os.remove(temp_update)
+                                                            return
+                                                        end
+                                                        
+                                                        output_file:write(cp1251_content)
+                                                        output_file:close()
+                                                        os.remove(temp_update)
+                                                        
+                                                        -- Удаляем резервную копию при успехе
+                                                        if doesFileExist(backup_path) then
+                                                            os.remove(backup_path)
+                                                        end
+                                                        
+                                                        sampAddChatMessage(prefix..'Обновление завершено успешно!', -1)
+                                                        wait(1000)
+                                                        thisScript():reload()
+                                                    end)
                                                 end
-                                            end
+                                            end)
                                         end)
-                                    end, b)
-                                else
-                                    update = false
-                                    print('v'..thisScript().version..': Обновление не требуется.')
+                                    else
+                                        print('v'..thisScript().version..': Обновление не требуется.')
+                                    end
                                 end
                             end
-                        else
-                            print('v'..thisScript().version..': Не могу проверить обновление.')
-                            update = false
                         end
                     end
                 end)
-                
-                while update ~= false and os.clock() - f < 10 do
-                    wait(100)
-                end
             end
         }
     ]])
@@ -182,7 +182,6 @@ if enable_autoupdate then
         end
     end
 end
-
 -- ============================================================
 -- ПОДДЕРЖКА CP1251
 -- ============================================================
@@ -454,18 +453,55 @@ local function getKeyName(vk_code)
     return VK_NAMES[vk_code] or ("VK:"..tostring(vk_code))
 end
 
+local SAMP_RESERVED_KEYS = {
+    [0x70] = "F1 (Помощь SAMP)",
+    [0x71] = "F2 (Настройки)",
+    [0x74] = "F5 (Чат)",
+    [0x75] = "F6 (Список игроков)",
+    [0x76] = "F7 (Радар)",
+    [0x7A] = "F11 (Скрыть чат)",
+    [0x09] = "TAB (Список игроков)",
+    [0x0D] = "ENTER (Чат)",
+    [0x54] = "T (Чат)",
+}
+
 local function isKeyAlreadyUsed(vk_code, exclude_rule_index)
     if vk_code == 0 or not vk_code then return false end
-    if config.globalHotkey == vk_code then return true end
-    for i, rule in ipairs(rulesDB) do
-        if i ~= exclude_rule_index and rule.key == vk_code then return true end
+    
+    -- Проверка на SAMP клавиши
+    if SAMP_RESERVED_KEYS[vk_code] then
+        return true, "зарезервирована SAMP: " .. SAMP_RESERVED_KEYS[vk_code]
     end
+    
+    -- Проверка на глобальную клавишу
+    if config.globalHotkey == vk_code then 
+        return true, "глобальной горячей клавишей" 
+    end
+    
+    -- Проверка на клавиши правил
+    for i, rule in ipairs(rulesDB) do
+        if i ~= exclude_rule_index and rule.key == vk_code then 
+            return true, 'правилом "' .. rule.name .. '"' 
+        end
+    end
+    
     return false
 end
 
 -- ============================================================
 -- РЕНДЕР ТЕКСТА
 -- ============================================================
+local color_cache = {}
+local function getColorFromHex(hex)
+    if not color_cache[hex] then
+        local r = tonumber(hex:sub(1, 2), 16) / 255.0
+        local g = tonumber(hex:sub(3, 4), 16) / 255.0
+        local b = tonumber(hex:sub(5, 6), 16) / 255.0
+        color_cache[hex] = imgui.ImVec4(r, g, b, 1.0)
+    end
+    return color_cache[hex]
+end
+
 local function renderFormattedText(text)
     local default_color_vec = imgui.ImVec4(1.0, 1.0, 1.0, 1.0)
     local line_height = imgui.GetTextLineHeight()
@@ -500,10 +536,7 @@ local function renderFormattedText(text)
             local pretext = line:sub(last_pos, s - 1)
             if #pretext > 0 then table.insert(segments, {text = pretext, color = current_color}) end
 
-            local r = tonumber(hex:sub(1, 2), 16) / 255.0
-            local g = tonumber(hex:sub(3, 4), 16) / 255.0
-            local b = tonumber(hex:sub(5, 6), 16) / 255.0
-            current_color = imgui.ImVec4(r, g, b, 1.0)
+            current_color = getColorFromHex(hex)
             last_pos = e + 1
         end
 
@@ -592,17 +625,25 @@ local function loadTextFromFile(filename)
         return "{FF0000}Ошибка: не удалось открыть файл " .. filename
     end
     
-    local content = file:read('*a')
-    file:close()
+    local success, content = pcall(file.read, file, '*a')
+    file:close() -- ЗАКРЫВАЕМ ВСЕГДА
     
+    if not success or not content then
+        return "{FF0000}Ошибка чтения файла " .. filename
+    end
+    
+    -- Обработка BOM и кодировок
     if content:sub(1, 3) == '\xEF\xBB\xBF' then
         content = content:sub(4)
-        content = encoding.UTF8:decode(content)
+        local decode_success, decoded = pcall(encoding.UTF8.decode, encoding.UTF8, content)
+        if decode_success then
+            content = decoded
+        end
     else
         local is_utf8 = content:find('[\xD0-\xD1][\x80-\xBF]')
         if is_utf8 then
-            local success, decoded = pcall(encoding.UTF8.decode, encoding.UTF8, content)
-            if success then content = decoded end
+            local decode_success, decoded = pcall(encoding.UTF8.decode, encoding.UTF8, content)
+            if decode_success then content = decoded end
         end
     end
     
@@ -2649,22 +2690,12 @@ function onWindowMessage(msg, wparam, lparam)
                     exclude_index = key_capture_mode.index
                 end
                 
-                if isKeyAlreadyUsed(code, exclude_index) then
+                local is_used, reason = isKeyAlreadyUsed(code, exclude_index)
+                if is_used then
                     local key_name = getKeyName(code)
-                    local used_by = ""
-                    if config.globalHotkey == code then
-                        used_by = "глобальной горячей клавишей"
-                    else
-                        for i, rule in ipairs(rulesDB) do
-                            if i ~= exclude_index and rule.key == code then
-                                used_by = "правилом \"" .. rule.name .. "\""
-                                break
-                            end
-                        end
-                    end
                     
                     if isSampLoaded() and isSampAvailable() then
-                        sampAddChatMessage(string.format('[ORULE] Клавиша "%s" уже забинжена %s', key_name, used_by), 0xFF0000)
+                        sampAddChatMessage(string.format('[ORULE] Клавиша "%s" уже использована %s', key_name, reason), 0xFF0000)
                     end
                     
                     key_capture_mode, key_capture_type = nil, nil
@@ -2707,22 +2738,12 @@ function onWindowMessage(msg, wparam, lparam)
                 exclude_index = key_capture_mode.index
             end
             
-            if isKeyAlreadyUsed(code, exclude_index) then
+            local is_used, reason = isKeyAlreadyUsed(code, exclude_index)
+            if is_used then
                 local key_name = getKeyName(code)
-                local used_by = ""
-                if config.globalHotkey == code then
-                    used_by = "глобальной горячей клавишей"
-                else
-                    for i, rule in ipairs(rulesDB) do
-                        if i ~= exclude_index and rule.key == code then
-                            used_by = "правилом \"" .. rule.name .. "\""
-                            break
-                        end
-                    end
-                end
                 
                 if isSampLoaded() and isSampAvailable() then
-                    sampAddChatMessage(string.format('[ORULE] Клавиша "%s" уже забинжена %s', key_name, used_by), 0xFF0000)
+                    sampAddChatMessage(string.format('[ORULE] Клавиша "%s" уже использована %s', key_name, reason), 0xFF0000)
                 end
                 
                 key_capture_mode, key_capture_type = nil, nil
@@ -2743,6 +2764,11 @@ function onWindowMessage(msg, wparam, lparam)
 
     if not key_capture_mode and radialMenu.globalEnabled then
         if msg == wm.WM_MBUTTONDOWN then
+            -- Проверяем блокировки ПЕРЕД активацией
+            if sampIsChatInputActive() or sampIsDialogActive() or isSampfuncsConsoleActive() or isPauseMenuActive() then
+                return -- НЕ активируем меню
+            end
+            
             radialMenu.pendingActivation = true
             radialMenu.releasePending = false
             radialMenu.isHeld = true
@@ -2795,7 +2821,7 @@ local function checkMoonLoaderVersion()
     end
 end
 
-function main()
+function safeMain()
     if not isSampLoaded() then 
         print('[ORULE] Ошибка: SA-MP не загружен')
         return 
@@ -2847,7 +2873,7 @@ function main()
     -- ============================================================
     -- АВТОЗАГРУЗКА РЕСУРСОВ С GITHUB
     -- ============================================================
-    function downloadResource(url, path, resource_type)
+    function downloadResource(url, path, resource_type, callback)
         local dir = path:match('(.+)\\[^\\]+$')
         if dir and not doesDirectoryExist(dir) then
             createDirectory(dir)
@@ -2856,18 +2882,25 @@ function main()
         -- Логика для текстовых файлов
         if resource_type == "text" then
             if config.autoUpdateTexts then
-                -- Всегда скачиваем
-                print('[ORULE] Обновляю текст с GitHub: ' .. path:match('([^\\]+)$'))
-                downloadUrlToFile(url, path)
+                print('[ORULE] Обновляю текст: ' .. path:match('([^\\]+)$'))
+                downloadUrlToFile(url, path, function(id, status)
+                    if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
+                        if callback then callback(true) end
+                    end
+                end)
                 return true
             else
-                -- Скачиваем только если файла нет
                 if not doesFileExist(path) then
-                    print('[ORULE] Создаю текст (первый запуск): ' .. path:match('([^\\]+)$'))
-                    downloadUrlToFile(url, path)
+                    print('[ORULE] Создаю текст: ' .. path:match('([^\\]+)$'))
+                    downloadUrlToFile(url, path, function(id, status)
+                        if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
+                            if callback then callback(true) end
+                        end
+                    end)
                     return true
                 else
-                    print('[ORULE] Пропускаю (автообновление выкл): ' .. path:match('([^\\]+)$'))
+                    print('[ORULE] Пропускаю: ' .. path:match('([^\\]+)$'))
+                    if callback then callback(false) end
                     return false
                 end
             end
@@ -2876,15 +2909,23 @@ function main()
         -- Для шрифтов и картинок
         if not doesFileExist(path) then
             print('[ORULE] Загружаю: ' .. path:match('([^\\]+)$'))
-            downloadUrlToFile(url, path)
+            downloadUrlToFile(url, path, function(id, status)
+                if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
+                    if callback then callback(true) end
+                end
+            end)
             return true
         end
+        if callback then callback(false) end
         return false
     end
 
     function checkAndDownloadResources()
         local base_url = "https://raw.githubusercontent.com/levushkaexelent/orule/main/resources/"
         local base_path = getWorkingDirectory() .. "\\OverlayRules\\"
+        
+        local downloaded_count = 0
+        local processed_count = 0
         
         local resources = {
             -- === ТЕКСТОВЫЕ ФАЙЛЫ ===
@@ -2943,29 +2984,33 @@ function main()
             {url = base_url .. "fonts/EagleSans-Regular.ttf", path = base_path .. "fonts\\EagleSans-Regular.ttf", type = "font"},
         }
         
-        local downloaded = 0
         local total = #resources
-        
         sampAddChatMessage('[ORULE] Проверка ресурсов... (' .. total .. ' файлов)', 0xFFFFFF)
         
+        -- Асинхронная загрузка
         for i, res in ipairs(resources) do
-            -- false = не принудительное обновление (скачивать только если нет)
-            if downloadResource(res.url, res.path, res.type, false) then
-                downloaded = downloaded + 1
-            end
+            downloadResource(res.url, res.path, res.type, function(was_downloaded)
+                processed_count = processed_count + 1
+                if was_downloaded then
+                    downloaded_count = downloaded_count + 1
+                end
+                
+                -- Показываем прогресс
+                if processed_count % 10 == 0 or processed_count == total then
+                    sampAddChatMessage('[ORULE] Проверено: ' .. processed_count .. '/' .. total, 0xFFFFFF)
+                end
+                
+                -- Финальное сообщение
+                if processed_count == total then
+                    if downloaded_count > 0 then
+                        sampAddChatMessage('[ORULE] Загружено новых ресурсов: ' .. downloaded_count, 0x00FF00)
+                    else
+                        sampAddChatMessage('[ORULE] Все ресурсы актуальны', 0x00FF00)
+                    end
+                end
+            end)
             
-            -- Показываем прогресс каждые 10 файлов
-            if i % 10 == 0 then
-                sampAddChatMessage('[ORULE] Проверено: ' .. i .. '/' .. total, 0xFFFFFF)
-            end
-            
-            wait(50) -- Небольшая задержка между запросами
-        end
-        
-        if downloaded > 0 then
-            sampAddChatMessage('[ORULE] Загружено новых ресурсов: ' .. downloaded, 0x00FF00)
-        else
-            sampAddChatMessage('[ORULE] Все ресурсы актуальны', 0x00FF00)
+            wait(100) -- Задержка между запросами
         end
     end
 
@@ -3019,5 +3064,13 @@ function main()
                 radialMenu.action = nil
             end
         end
+    end
+end
+
+function main()
+    local success, error_msg = pcall(safeMain)
+    if not success then
+        logError('CRITICAL ERROR: ' .. tostring(error_msg))
+        sampAddChatMessage('[ORULE] Критическая ошибка! Проверьте orule_errors.log', 0xFF0000)
     end
 end
