@@ -2731,31 +2731,43 @@ function main()
     -- ============================================================
     -- АВТОЗАГРУЗКА РЕСУРСОВ С GITHUB
     -- ============================================================
-    function downloadResource(url, path, resource_type)
+    function downloadResource(url, path, resource_type, force_update)
         local dir = path:match('(.+)\\[^\\]+$')
         if dir and not doesDirectoryExist(dir) then
             createDirectory(dir)
         end
         
-        -- Проверка: если это текстовый файл и автообновление текстов выключено
-        if resource_type == "text" and not config.autoUpdateTexts then
-            -- Скачиваем только если файла НЕТ
-            if not doesFileExist(path) then
-                print('[ORULE] Загружаю текст: ' .. path:match('([^\\]+)$'))
-                downloadUrlToFile(url, path)
-                return true
+        local file_exists = doesFileExist(path)
+        
+        -- Логика для текстовых файлов
+        if resource_type == "text" then
+            if config.autoUpdateTexts then
+                -- Включено автообновление текстов
+                if force_update or not file_exists then
+                    print('[ORULE] ' .. (file_exists and 'Обновляю' or 'Загружаю') .. ' текст: ' .. path:match('([^\\]+)$'))
+                    downloadUrlToFile(url, path)
+                    return true
+                end
             else
-                -- Файл существует, пропускаем обновление
-                return false
+                -- Выключено автообновление текстов - скачиваем только если нет
+                if not file_exists then
+                    print('[ORULE] Загружаю текст: ' .. path:match('([^\\]+)$'))
+                    downloadUrlToFile(url, path)
+                    return true
+                else
+                    print('[ORULE] Пропускаю текст (автообновление выкл): ' .. path:match('([^\\]+)$'))
+                end
             end
+            return false
         end
         
-        -- Для шрифтов и картинок - стандартная логика
-        if not doesFileExist(path) then
-            print('[ORULE] Загружаю: ' .. path:match('([^\\]+)$'))
+        -- Для шрифтов и картинок - всегда обновляем если force_update=true
+        if force_update or not file_exists then
+            print('[ORULE] ' .. (file_exists and 'Обновляю' or 'Загружаю') .. ': ' .. path:match('([^\\]+)$'))
             downloadUrlToFile(url, path)
             return true
         end
+        
         return false
     end
 
@@ -2826,7 +2838,8 @@ function main()
         sampAddChatMessage('[ORULE] Проверка ресурсов... (' .. total .. ' файлов)', 0xFFFFFF)
         
         for i, res in ipairs(resources) do
-            if downloadResource(res.url, res.path, res.type) then
+            -- false = не принудительное обновление (скачивать только если нет)
+            if downloadResource(res.url, res.path, res.type, false) then
                 downloaded = downloaded + 1
             end
             
