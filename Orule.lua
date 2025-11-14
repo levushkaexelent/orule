@@ -313,7 +313,7 @@ local function executeRadialAction(index)
             wait(1300)
             sampSendChat("Являюсь курсантом МВД.")
             wait(1300)
-            sampSendChat('Ваше задержание фиксируется на нательную камеру «ДОЗОР».')
+            sampSendChat('Ваше задержание фиксируется на нательную камеру ВДОЗОРВ.')
             wait(1000)
             local hour = os.date('%H')
             local min = os.date('%M')
@@ -341,7 +341,7 @@ local function executeRadialAction(index)
             if not (isSampLoaded() and isSampAvailable()) then return end
             sampSendChat('Сейчас я проведу Ваш обыск на наличие запрещенных предметов.')
             wait(1500)
-            sampSendChat('Ваш обыск фиксируется нательную камеру «ДОЗОР».')
+            sampSendChat('Ваш обыск фиксируется нательную камеру ВДОЗОРВ.')
             wait(1500)
             local hour = os.date('%H')
             local min = os.date('%M')
@@ -2673,6 +2673,116 @@ function main()
     end)
 
     local held_rule_active = false
+
+    -- ============================================================
+    -- АВТОЗАГРУЗКА РЕСУРСОВ С GITHUB
+    -- ============================================================
+    function downloadResource(url, path)
+        local dir = path:match('(.+)\\[^\\]+$')
+        if dir and not doesDirectoryExist(dir) then
+            createDirectory(dir)
+        end
+        
+        if not doesFileExist(path) then
+            print('[ORULE] Загружаю: ' .. path:match('([^\\]+)$'))
+            downloadUrlToFile(url, path)
+            return true
+        end
+        return false
+    end
+
+    function checkAndDownloadResources()
+        local base_url = "https://raw.githubusercontent.com/levushkaexelent/orule/main/resources/"
+        local base_path = getWorkingDirectory() .. "\\OverlayRules\\"
+        
+        local resources = {
+            -- === ТЕКСТОВЫЕ ФАЙЛЫ (orule/resources/texts/) ===
+            {url = base_url .. "texts/hierarchy.txt", path = base_path .. "texts\\hierarchy.txt"},
+            {url = base_url .. "texts/labor_code.txt", path = base_path .. "texts\\labor_code.txt"},
+            {url = base_url .. "texts/legal_constitution.txt", path = base_path .. "texts\\legal_constitution.txt"},
+            {url = base_url .. "texts/legal_federal.txt", path = base_path .. "texts\\legal_federal.txt"},
+            {url = base_url .. "texts/legal_fsb_law.txt", path = base_path .. "texts\\legal_fsb_law.txt"},
+            {url = base_url .. "texts/legal_koap.txt", path = base_path .. "texts\\legal_koap.txt"},
+            {url = base_url .. "texts/legal_police_law.txt", path = base_path .. "texts\\legal_police_law.txt"},
+            {url = base_url .. "texts/legal_uk.txt", path = base_path .. "texts\\legal_uk.txt"},
+            {url = base_url .. "texts/mvd_drill.txt", path = base_path .. "texts\\mvd_drill.txt"},
+            {url = base_url .. "texts/mvd_handbook.txt", path = base_path .. "texts\\mvd_handbook.txt"},
+            {url = base_url .. "texts/mvd_statute.txt", path = base_path .. "texts\\mvd_statute.txt"},
+            {url = base_url .. "texts/police_main.txt", path = base_path .. "texts\\police_main.txt"},
+            {url = base_url .. "texts/police_mask.txt", path = base_path .. "texts\\police_mask.txt"},
+            {url = base_url .. "texts/police_radar.txt", path = base_path .. "texts\\police_radar.txt"},
+            {url = base_url .. "texts/police_tint.txt", path = base_path .. "texts\\police_tint.txt"},
+            {url = base_url .. "texts/territory_army.txt", path = base_path .. "texts\\territory_army.txt"},
+            {url = base_url .. "texts/territory_army_supplement.txt", path = base_path .. "texts\\territory_army_supplement.txt"},
+            {url = base_url .. "texts/territory_fsb.txt", path = base_path .. "texts\\territory_fsb.txt"},
+            {url = base_url .. "texts/territory_fsin.txt", path = base_path .. "texts\\territory_fsin.txt"},
+            {url = base_url .. "texts/territory_fsin_supplement.txt", path = base_path .. "texts\\territory_fsin_supplement.txt"},
+            {url = base_url .. "texts/territory_government.txt", path = base_path .. "texts\\territory_government.txt"},
+            {url = base_url .. "texts/territory_hospital.txt", path = base_path .. "texts\\territory_hospital.txt"},
+            {url = base_url .. "texts/territory_main.txt", path = base_path .. "texts\\territory_main.txt"},
+            {url = base_url .. "texts/territory_mchs.txt", path = base_path .. "texts\\territory_mchs.txt"},
+            {url = base_url .. "texts/territory_mvd.txt", path = base_path .. "texts\\territory_mvd.txt"},
+            {url = base_url .. "texts/territory_smi.txt", path = base_path .. "texts\\territory_smi.txt"},
+            {url = base_url .. "texts/upk.txt", path = base_path .. "texts\\upk.txt"},
+            
+            -- === ИЗОБРАЖЕНИЯ (orule/resources/images/) ===
+            {url = base_url .. "images/radar_map.png", path = base_path .. "images\\radar_map.png"},
+            {url = base_url .. "images/ter_1.jpg", path = base_path .. "images\\ter_1.jpg"},
+            {url = base_url .. "images/ter_2.jpg", path = base_path .. "images\\ter_2.jpg"},
+            {url = base_url .. "images/ter_3.jpg", path = base_path .. "images\\ter_3.jpg"},
+            {url = base_url .. "images/ter_4.jpg", path = base_path .. "images\\ter_4.jpg"},
+            {url = base_url .. "images/ter_5.jpg", path = base_path .. "images\\ter_5.jpg"},
+            {url = base_url .. "images/ter_6.jpg", path = base_path .. "images\\ter_6.jpg"},
+            {url = base_url .. "images/ter_7.jpg", path = base_path .. "images\\ter_7.jpg"},
+            {url = base_url .. "images/ter_8.jpg", path = base_path .. "images\\ter_8.jpg"},
+            {url = base_url .. "images/ter_9.jpg", path = base_path .. "images\\ter_9.jpg"},
+            {url = base_url .. "images/ter_10.jpg", path = base_path .. "images\\ter_10.jpg"},
+            {url = base_url .. "images/ter_11.jpg", path = base_path .. "images\\ter_11.jpg"},
+            {url = base_url .. "images/ter_12.jpg", path = base_path .. "images\\ter_12.jpg"},
+            {url = base_url .. "images/ter_13.jpg", path = base_path .. "images\\ter_13.jpg"},
+            {url = base_url .. "images/ter_14.jpg", path = base_path .. "images\\ter_14.jpg"},
+            {url = base_url .. "images/ter_15.jpg", path = base_path .. "images\\ter_15.jpg"},
+            {url = base_url .. "images/ter_16.jpg", path = base_path .. "images\\ter_16.jpg"},
+            {url = base_url .. "images/ter_17.jpg", path = base_path .. "images\\ter_17.jpg"},
+            {url = base_url .. "images/ter_18.jpg", path = base_path .. "images\\ter_18.jpg"},
+            {url = base_url .. "images/ter_19.jpg", path = base_path .. "images\\ter_19.jpg"},
+            {url = base_url .. "images/ter_20.jpg", path = base_path .. "images\\ter_20.jpg"},
+            
+            -- === ШРИФТ (orule/resources/fonts/) ===
+            {url = base_url .. "fonts/EagleSans-Regular.ttf", path = base_path .. "fonts\\EagleSans-Regular.ttf"},
+        }
+        
+        local downloaded = 0
+        local total = #resources
+        
+        sampAddChatMessage('[ORULE] Проверка ресурсов... (' .. total .. ' файлов)', 0xFFFFFF)
+        
+        for i, res in ipairs(resources) do
+            if downloadResource(res.url, res.path) then
+                downloaded = downloaded + 1
+            end
+            
+            -- Показываем прогресс каждые 10 файлов
+            if i % 10 == 0 then
+                sampAddChatMessage('[ORULE] Проверено: ' .. i .. '/' .. total, 0xFFFFFF)
+            end
+            
+            wait(50) -- Небольшая задержка между запросами
+        end
+        
+        if downloaded > 0 then
+            sampAddChatMessage('[ORULE] Загружено новых ресурсов: ' .. downloaded, 0x00FF00)
+        else
+            sampAddChatMessage('[ORULE] Все ресурсы актуальны', 0x00FF00)
+        end
+    end
+
+    -- Запускаем проверку ресурсов
+    lua_thread.create(function()
+        wait(2000) -- Ждём инициализацию MoonLoader
+        checkAndDownloadResources()
+    end)
+
     while true do
         wait(0)
         local is_game_focused = not (sampIsChatInputActive() or sampIsDialogActive() or isSampfuncsConsoleActive() or isPauseMenuActive())
