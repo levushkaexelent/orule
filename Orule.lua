@@ -18,9 +18,30 @@ function update()
     function f:download()
         local response = requests.get(raw)
         if response.status_code == 200 then
-            downloadUrlToFile(decodeJson(response.text)['url'], thisScript().path, function (id, status, p1, p2)
-                print('Скачиваю '..decodeJson(response.text)['url']..' в '..thisScript().path)
+            local script_url = decodeJson(response.text)['url']
+            downloadUrlToFile(script_url, thisScript().path, function (id, status, p1, p2)
+                print('Скачиваю '..script_url..' в '..thisScript().path)
                 if status == dlstatus.STATUSEX_ENDDOWNLOAD then
+                    -- Конвертируем кодировку из UTF-8 в CP1251
+                    local file = io.open(thisScript().path, 'rb')
+                    if file then
+                        local content = file:read('*all')
+                        file:close()
+
+                        -- Конвертируем из UTF-8 в CP1251
+                        content = encoding.UTF8:decode(content)
+                        if content then
+                            content = encoding.CP1251:encode(content)
+                            if content then
+                                file = io.open(thisScript().path, 'wb')
+                                if file then
+                                    file:write(content)
+                                    file:close()
+                                end
+                            end
+                        end
+                    end
+
                     sampAddChatMessage('Скрипт обновлен, перезагрузка...', -1)
                     thisScript():reload()
                 end
