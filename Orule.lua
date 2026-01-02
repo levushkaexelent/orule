@@ -1,6 +1,36 @@
-script_name('Orule - Менеджер правил')
+script_version('0')
+script_name('Orule - РњРµРЅРµРґР¶РµСЂ РїСЂР°РІРёР»')
 script_author('Lev Exelent (vk.com/e11evated)')
-script_version('1.2')
+
+function update()
+    local raw = 'https://raw.githubusercontent.com/GovnocodedByChapo/autoupdtest/main/file.json'
+    local dlstatus = require('moonloader').download_status
+    local requests = require('requests')
+    local f = {}
+    function f:getLastVersion()
+        local response = requests.get(raw)
+        if response.status_code == 200 then
+            return decodeJson(response.text)['last']
+        else
+            return 'UNKNOWN'
+        end
+    end
+    function f:download()
+        local response = requests.get(raw)
+        if response.status_code == 200 then
+            downloadUrlToFile(decodeJson(response.text)['url'], thisScript().path, function (id, status, p1, p2)
+                print('РЎРєР°С‡РёРІР°СЋ '..decodeJson(response.text)['url']..' РІ '..thisScript().path)
+                if status == dlstatus.STATUSEX_ENDDOWNLOAD then
+                    sampAddChatMessage('РЎРєСЂРёРїС‚ РѕР±РЅРѕРІР»РµРЅ, РїРµСЂРµР·Р°РіСЂСѓР·РєР°...', -1)
+                    thisScript():reload()
+                end
+            end)
+        else
+            sampAddChatMessage('РћС€РёР±РєР°, РЅРµРІРѕР·РјРѕР¶РЅРѕ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ РѕР±РЅРѕРІР»РµРЅРёРµ, РєРѕРґ: '..response.status_code, -1)
+        end
+    end
+    return f
+end
 
 require('lib.moonloader')
 local imgui = require('mimgui')
@@ -14,20 +44,20 @@ encoding.default = 'CP1251'
 local u8 = encoding.UTF8
 
 -- ============================================================
--- МОДУЛЬ ДАННЫХ
+-- РњРћР”РЈР›Р¬ Р”РђРќРќР«РҐ
 -- ============================================================
 local orule = {
-    -- Система логирования
+    -- РЎРёСЃС‚РµРјР° Р»РѕРіРёСЂРѕРІР°РЅРёСЏ
     LOG_FILE = getWorkingDirectory() .. '\\OverlayRules\\orule_errors.log',
 
-    -- Пути к файлам
+    -- РџСѓС‚Рё Рє С„Р°Р№Р»Р°Рј
     SCRIPT_DIR = getWorkingDirectory() .. '\\OverlayRules',
-    CONFIG_FILE = nil, -- будет инициализировано позже
+    CONFIG_FILE = nil, -- Р±СѓРґРµС‚ РёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°РЅРѕ РїРѕР·Р¶Рµ
     FONTS_DIR = nil,
     IMAGES_DIR = nil,
     TEXTS_DIR = nil,
 
-    -- Переменные
+    -- РџРµСЂРµРјРµРЅРЅС‹Рµ
     rulesDB = {},
     text_cache = {},
     config = {
@@ -44,14 +74,14 @@ local orule = {
     }
 }
 
--- Инициализация путей
+-- РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РїСѓС‚РµР№
 orule.CONFIG_FILE = orule.SCRIPT_DIR .. '\\config.txt'
 orule.FONTS_DIR = orule.SCRIPT_DIR .. '\\fonts'
 orule.IMAGES_DIR = orule.SCRIPT_DIR .. '\\images'
 orule.TEXTS_DIR = orule.SCRIPT_DIR .. '\\texts'
 
 -- ============================================================
--- СИСТЕМА ЛОГИРОВАНИЯ
+-- РЎРРЎРўР•РњРђ Р›РћР“РР РћР’РђРќРРЇ
 -- ============================================================
 local function logError(message)
     local file = io.open(orule.LOG_FILE, 'a')
@@ -63,167 +93,16 @@ local function logError(message)
 end
 
 -- ============================================================
--- СИСТЕМА АВТООБНОВЛЕНИЯ
+-- РџР•Р Р•РњР•РќРќР«Р•
 -- ============================================================
 local SCRIPT_VERSION = "1.2"
-local enable_autoupdate = true
-local autoupdate_loaded = false
-local Update = nil
-
-if enable_autoupdate then
-    local updater_loaded, Updater = pcall(loadstring, [[
-        return {
-            check = function(json_url, prefix, repo_url)
-                local dlstatus = require('moonloader').download_status
-                local temp_json = os.tmpname()
-                local script_path = thisScript().path
-                local backup_path = script_path .. '.backup'
-
-                -- Создаем резервную копию
-                local function createBackup()
-                    local original = io.open(script_path, 'rb')
-                    if not original then return false end
-                    local content = original:read('*a')
-                    original:close()
-
-                    local backup = io.open(backup_path, 'wb')
-                    if not backup then return false end
-                    backup:write(content)
-                    backup:close()
-                    return true
-                end
-
-                -- Восстанавливаем из резервной копии
-                local function restoreBackup()
-                    if not doesFileExist(backup_path) then return false end
-
-                    local backup = io.open(backup_path, 'rb')
-                    if not backup then return false end
-                    local content = backup:read('*a')
-                    backup:close()
-
-                    local original = io.open(script_path, 'wb')
-                    if not original then return false end
-                    original:write(content)
-                    original:close()
-
-                    os.remove(backup_path)
-                    return true
-                end
-
-                if doesFileExist(temp_json) then os.remove(temp_json) end
-
-                downloadUrlToFile(json_url, temp_json, function(id, status, p1, p2)
-                    if status == dlstatus.STATUSEX_ENDDOWNLOAD then
-                        if doesFileExist(temp_json) then
-                            local json_file = io.open(temp_json, 'r')
-                            if json_file then
-                                local json_data = decodeJson(json_file:read('*a'))
-                                json_file:close()
-                                os.remove(temp_json)
-
-                                if json_data and json_data.latest and json_data.updateurl then
-                                    local updateversion = json_data.latest
-                                    local updatelink = json_data.updateurl
-
-                                    if updateversion ~= thisScript().version then
-                                        lua_thread.create(function()
-                                            sampAddChatMessage(prefix..'Обнаружено обновление '..thisScript().version..' ? '..updateversion, -1)
-                                            wait(500)
-
-                                            -- Создаем резервную копию
-                                            if not createBackup() then
-                                                sampAddChatMessage(prefix..'Ошибка: не удалось создать резервную копию', -1)
-                                                return
-                                            end
-
-                                            local temp_update = os.getenv('TEMP') .. '\\orule_update.lua'
-
-                                            downloadUrlToFile(updatelink, temp_update, function(id2, status2, p3, p4)
-                                                if status2 == dlstatus.STATUS_ENDDOWNLOADDATA then
-                                                    lua_thread.create(function()
-                                                        wait(300)
-
-                                                        local temp_file = io.open(temp_update, 'rb')
-                                                        if not temp_file then
-                                                            sampAddChatMessage(prefix..'Ошибка: не могу открыть загруженный файл', -1)
-                                                            restoreBackup()
-                                                            return
-                                                        end
-
-                                                        local utf8_content = temp_file:read('*a')
-                                                        temp_file:close()
-
-                                                        -- Убираем BOM
-                                                        if utf8_content:sub(1, 3) == '\xEF\xBB\xBF' then
-                                                            utf8_content = utf8_content:sub(4)
-                                                        end
-
-                                                        -- Используем встроенный декодер
-                                                        local success, cp1251_content = pcall(function()
-                                                            return encoding.UTF8:decode(utf8_content)
-                                                        end)
-
-                                                        if not success or not cp1251_content then
-                                                            sampAddChatMessage(prefix..'Ошибка конвертации кодировки', -1)
-                                                            restoreBackup()
-                                                            os.remove(temp_update)
-                                                            return
-                                                        end
-
-                                                        -- Сохраняем
-                                                        local output_file = io.open(script_path, 'wb')
-                                                        if not output_file then
-                                                            sampAddChatMessage(prefix..'Ошибка записи файла', -1)
-                                                            restoreBackup()
-                                                            os.remove(temp_update)
-                                                            return
-                                                        end
-
-                                                        output_file:write(cp1251_content)
-                                                        output_file:close()
-                                                        os.remove(temp_update)
-
-                                                        -- Удаляем резервную копию при успехе
-                                                        if doesFileExist(backup_path) then
-                                                            os.remove(backup_path)
-                                                        end
-
-                                                        sampAddChatMessage(prefix..'Обновление завершено успешно!', -1)
-                                                        wait(1000)
-                                                        thisScript():reload()
-                                                    end)
-                                                end
-                                            end)
-                                        end)
-                                    else
-                                        print('v'..thisScript().version..': Обновление не требуется.')
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end)
-            end
-        }
-    ]])
-
-    if updater_loaded then
-        autoupdate_loaded, Update = pcall(Updater)
-        if autoupdate_loaded then
-            Update.json_url = "https://raw.githubusercontent.com/levushkaexelent/orule/main/version.json?" .. tostring(os.clock())
-            Update.prefix = "[ORULE]: "
-            Update.url = "https://github.com/levushkaexelent/orule"
-        end
-    end
-end
 -- ============================================================
--- ПОДДЕРЖКА CP1251
+-- РџРћР”Р”Р•Р Р–РљРђ CP1251
 -- ============================================================
--- Расширение string.lower() для корректной работы с кириллицей CP1251
+-- Р Р°СЃС€РёСЂРµРЅРёРµ string.lower() РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕР№ СЂР°Р±РѕС‚С‹ СЃ РєРёСЂРёР»Р»РёС†РµР№ CP1251
 do
     local cp1251_map = {}
-    -- Заполняем маппинг для символов кириллицы (коды 192-223 в CP1251)
+    -- Р—Р°РїРѕР»РЅСЏРµРј РјР°РїРїРёРЅРі РґР»СЏ СЃРёРјРІРѕР»РѕРІ РєРёСЂРёР»Р»РёС†С‹ (РєРѕРґС‹ 192-223 РІ CP1251)
     for i = 192, 223 do
         cp1251_map[string.char(i)] = string.char(i + 32)
     end
@@ -232,39 +111,39 @@ do
     function string.lower(str)
         if type(str) ~= "string" then return original_lower(str) end
 
-        -- Применяем маппинг для кириллицы
+        -- РџСЂРёРјРµРЅСЏРµРј РјР°РїРїРёРЅРі РґР»СЏ РєРёСЂРёР»Р»РёС†С‹
         local result = str:gsub("[\192-\223]", function(c)
             return cp1251_map[c] or c
         end)
 
-        -- Используем стандартный lower для остальных символов
+        -- РСЃРїРѕР»СЊР·СѓРµРј СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ lower РґР»СЏ РѕСЃС‚Р°Р»СЊРЅС‹С… СЃРёРјРІРѕР»РѕРІ
         return original_lower(result)
     end
 end
 
--- Функция utf8_lower теперь просто обертка для совместимости
+-- Р¤СѓРЅРєС†РёСЏ utf8_lower С‚РµРїРµСЂСЊ РїСЂРѕСЃС‚Рѕ РѕР±РµСЂС‚РєР° РґР»СЏ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё
 local function utf8_lower(str)
     return string.lower(str)
 end
 
 -- ============================================================
--- СИНОНИМЫ ДЛЯ ПОИСКА
+-- РЎРРќРћРќРРњР« Р”Р›РЇ РџРћРРЎРљРђ
 -- ============================================================
 local search_synonyms = {
-    ["тонировка"] = {"тонировочная", "затемнение", "тонирование"},
-    ["полиция"] = {"мвд", "полицейский", "правоохранитель"},
-    ["обыск"] = {"досмотр", "проверка", "обыскивание"},
-    ["задержание"] = {"арест", "задержать", "задержали"},
-    ["радар"] = {"радары", "радаром", "скорость"},
-    ["маска"] = {"маски", "снятие", "замаскированный"},
-    ["удостоверение"] = {"документ", "удостоверения", "корочка"},
-    ["закрытая территория"] = {"зт", "закрытые территории", "охраняемая зона"},
-    ["автомобиль"] = {"машина", "транспорт", "авто", "тс"},
-    ["оружие"] = {"пушка", "ствол", "огнестрел", "травмат"}
+    ["С‚РѕРЅРёСЂРѕРІРєР°"] = {"С‚РѕРЅРёСЂРѕРІРѕС‡РЅР°СЏ", "Р·Р°С‚РµРјРЅРµРЅРёРµ", "С‚РѕРЅРёСЂРѕРІР°РЅРёРµ"},
+    ["РїРѕР»РёС†РёСЏ"] = {"РјРІРґ", "РїРѕР»РёС†РµР№СЃРєРёР№", "РїСЂР°РІРѕРѕС…СЂР°РЅРёС‚РµР»СЊ"},
+    ["РѕР±С‹СЃРє"] = {"РґРѕСЃРјРѕС‚СЂ", "РїСЂРѕРІРµСЂРєР°", "РѕР±С‹СЃРєРёРІР°РЅРёРµ"},
+    ["Р·Р°РґРµСЂР¶Р°РЅРёРµ"] = {"Р°СЂРµСЃС‚", "Р·Р°РґРµСЂР¶Р°С‚СЊ", "Р·Р°РґРµСЂР¶Р°Р»Рё"},
+    ["СЂР°РґР°СЂ"] = {"СЂР°РґР°СЂС‹", "СЂР°РґР°СЂРѕРј", "СЃРєРѕСЂРѕСЃС‚СЊ"},
+    ["РјР°СЃРєР°"] = {"РјР°СЃРєРё", "СЃРЅСЏС‚РёРµ", "Р·Р°РјР°СЃРєРёСЂРѕРІР°РЅРЅС‹Р№"},
+    ["СѓРґРѕСЃС‚РѕРІРµСЂРµРЅРёРµ"] = {"РґРѕРєСѓРјРµРЅС‚", "СѓРґРѕСЃС‚РѕРІРµСЂРµРЅРёСЏ", "РєРѕСЂРѕС‡РєР°"},
+    ["Р·Р°РєСЂС‹С‚Р°СЏ С‚РµСЂСЂРёС‚РѕСЂРёСЏ"] = {"Р·С‚", "Р·Р°РєСЂС‹С‚С‹Рµ С‚РµСЂСЂРёС‚РѕСЂРёРё", "РѕС…СЂР°РЅСЏРµРјР°СЏ Р·РѕРЅР°"},
+    ["Р°РІС‚РѕРјРѕР±РёР»СЊ"] = {"РјР°С€РёРЅР°", "С‚СЂР°РЅСЃРїРѕСЂС‚", "Р°РІС‚Рѕ", "С‚СЃ"},
+    ["РѕСЂСѓР¶РёРµ"] = {"РїСѓС€РєР°", "СЃС‚РІРѕР»", "РѕРіРЅРµСЃС‚СЂРµР»", "С‚СЂР°РІРјР°С‚"}
 }
 
 -- ============================================================
--- ДОПОЛНИТЕЛЬНЫЕ ПЕРЕМЕННЫЕ
+-- Р”РћРџРћР›РќРРўР•Р›Р¬РќР«Р• РџР•Р Р•РњР•РќРќР«Р•
 -- ============================================================
 
 local show_window = imgui.new.bool(false)
@@ -295,12 +174,12 @@ local radialMenu = {
     radius = 120,
     deadzone = 28,
     buttons = {
-        {name = "Мегафон", enabled = true},
-        {name = "Миранда", enabled = true},
-        {name = "Обыск", enabled = true},
-        {name = "Удостоверение", enabled = true},
-        {name = "Фоторобот", enabled = true},
-        {name = "Тонировка", enabled = true}
+        {name = "РњРµРіР°С„РѕРЅ", enabled = true},
+        {name = "РњРёСЂР°РЅРґР°", enabled = true},
+        {name = "РћР±С‹СЃРє", enabled = true},
+        {name = "РЈРґРѕСЃС‚РѕРІРµСЂРµРЅРёРµ", enabled = true},
+        {name = "Р¤РѕС‚РѕСЂРѕР±РѕС‚", enabled = true},
+        {name = "РўРѕРЅРёСЂРѕРІРєР°", enabled = true}
     },
     action = nil,
     globalEnabled = true
@@ -317,7 +196,7 @@ local legalBaseActiveTab = imgui.new.int(0)
 local territoryActiveTab = imgui.new.int(0)
 
 -- ============================================================
--- ДЕЙСТВИЯ РАДИАЛЬНОГО МЕНЮ
+-- Р”Р•Р™РЎРўР’РРЇ Р РђР”РРђР›Р¬РќРћР“Рћ РњР•РќР®
 -- ============================================================
 local function executeRadialAction(index)
     if not index then return end
@@ -325,56 +204,56 @@ local function executeRadialAction(index)
     if index == 1 then
         lua_thread.create(function()
             if not (isSampLoaded() and isSampAvailable()) then return end
-            sampSendChat('/m [МВД] - Говорит МВД, водитель, прижмитесь к обочине и заглушите двигатель!')
+            sampSendChat('/m [РњР’Р”] - Р“РѕРІРѕСЂРёС‚ РњР’Р”, РІРѕРґРёС‚РµР»СЊ, РїСЂРёР¶РјРёС‚РµСЃСЊ Рє РѕР±РѕС‡РёРЅРµ Рё Р·Р°РіР»СѓС€РёС‚Рµ РґРІРёРіР°С‚РµР»СЊ!')
             wait(1500)
-            sampSendChat('/m [МВД] - В противном случае мы применим спецсредства!')
+            sampSendChat('/m [РњР’Р”] - Р’ РїСЂРѕС‚РёРІРЅРѕРј СЃР»СѓС‡Р°Рµ РјС‹ РїСЂРёРјРµРЅРёРј СЃРїРµС†СЃСЂРµРґСЃС‚РІР°!')
         end)
     elseif index == 2 then
         lua_thread.create(function()
             if not (isSampLoaded() and isSampAvailable()) then return end
-            sampSendChat('Были задержаны территориальным управлением Министерства...')
+            sampSendChat('Р‘С‹Р»Рё Р·Р°РґРµСЂР¶Р°РЅС‹ С‚РµСЂСЂРёС‚РѕСЂРёР°Р»СЊРЅС‹Рј СѓРїСЂР°РІР»РµРЅРёРµРј РњРёРЅРёСЃС‚РµСЂСЃС‚РІР°...')
             wait(1300)
-            sampSendChat('...Внутренних Дел по Нижегородской области, г. Арзамас.')
+            sampSendChat('...Р’РЅСѓС‚СЂРµРЅРЅРёС… Р”РµР» РїРѕ РќРёР¶РµРіРѕСЂРѕРґСЃРєРѕР№ РѕР±Р»Р°СЃС‚Рё, Рі. РђСЂР·Р°РјР°СЃ.')
             wait(1300)
-            sampSendChat("Являюсь курсантом МВД.")
+            sampSendChat("РЇРІР»СЏСЋСЃСЊ РєСѓСЂСЃР°РЅС‚РѕРј РњР’Р”.")
             wait(1300)
-            sampSendChat('Ваше задержание фиксируется на нательную камеру ВДОЗОРВ.')
+            sampSendChat('Р’Р°С€Рµ Р·Р°РґРµСЂР¶Р°РЅРёРµ С„РёРєСЃРёСЂСѓРµС‚СЃСЏ РЅР° РЅР°С‚РµР»СЊРЅСѓСЋ РєР°РјРµСЂСѓ Р’Р”РћР—РћР Р’.')
             wait(1000)
             local hour = os.date('%H')
             local min = os.date('%M')
             local sec = os.date('%S')
-            sampSendChat(string.format('/do Ведётся видеофиксация. Текущее время: %s:%s:%s.', hour, min, sec))
+            sampSendChat(string.format('/do Р’РµРґС‘С‚СЃСЏ РІРёРґРµРѕС„РёРєСЃР°С†РёСЏ. РўРµРєСѓС‰РµРµ РІСЂРµРјСЏ: %s:%s:%s.', hour, min, sec))
             wait(1000)
-            sampSendChat('Согласно Конституции РФ.')
+            sampSendChat('РЎРѕРіР»Р°СЃРЅРѕ РљРѕРЅСЃС‚РёС‚СѓС†РёРё Р Р¤.')
             wait(1300)
-            sampSendChat('Вы имеете право хранить молчание.')
+            sampSendChat('Р’С‹ РёРјРµРµС‚Рµ РїСЂР°РІРѕ С…СЂР°РЅРёС‚СЊ РјРѕР»С‡Р°РЅРёРµ.')
             wait(1300)
-            sampSendChat('Право на ознакомление со всеми протоколами, составленными при задержании.')
+            sampSendChat('РџСЂР°РІРѕ РЅР° РѕР·РЅР°РєРѕРјР»РµРЅРёРµ СЃРѕ РІСЃРµРјРё РїСЂРѕС‚РѕРєРѕР»Р°РјРё, СЃРѕСЃС‚Р°РІР»РµРЅРЅС‹РјРё РїСЂРё Р·Р°РґРµСЂР¶Р°РЅРёРё.')
             wait(1300)
-            sampSendChat('Имеете право на отказ от дачи показаний против себя и своих близких.')
+            sampSendChat('РРјРµРµС‚Рµ РїСЂР°РІРѕ РЅР° РѕС‚РєР°Р· РѕС‚ РґР°С‡Рё РїРѕРєР°Р·Р°РЅРёР№ РїСЂРѕС‚РёРІ СЃРµР±СЏ Рё СЃРІРѕРёС… Р±Р»РёР·РєРёС….')
             wait(1300)
-            sampSendChat('На юридическую помощь в лице адвоката.')
+            sampSendChat('РќР° СЋСЂРёРґРёС‡РµСЃРєСѓСЋ РїРѕРјРѕС‰СЊ РІ Р»РёС†Рµ Р°РґРІРѕРєР°С‚Р°.')
             wait(1500)
-            sampSendChat('Адвоката можете вызвать в следственном изоляторе, телефон у Вас изыматься не будет.')
+            sampSendChat('РђРґРІРѕРєР°С‚Р° РјРѕР¶РµС‚Рµ РІС‹Р·РІР°С‚СЊ РІ СЃР»РµРґСЃС‚РІРµРЅРЅРѕРј РёР·РѕР»СЏС‚РѕСЂРµ, С‚РµР»РµС„РѕРЅ Сѓ Р’Р°СЃ РёР·С‹РјР°С‚СЊСЃСЏ РЅРµ Р±СѓРґРµС‚.')
             wait(1500)
-            sampSendChat('Все мои действия можете обжаловать в суде.')
+            sampSendChat('Р’СЃРµ РјРѕРё РґРµР№СЃС‚РІРёСЏ РјРѕР¶РµС‚Рµ РѕР±Р¶Р°Р»РѕРІР°С‚СЊ РІ СЃСѓРґРµ.')
             wait(1500)
-            sampSendChat('Вам ясны ваши права?')
+            sampSendChat('Р’Р°Рј СЏСЃРЅС‹ РІР°С€Рё РїСЂР°РІР°?')
         end)
     elseif index == 3 then
         lua_thread.create(function()
             if not (isSampLoaded() and isSampAvailable()) then return end
-            sampSendChat('Сейчас я проведу Ваш обыск на наличие запрещенных предметов.')
+            sampSendChat('РЎРµР№С‡Р°СЃ СЏ РїСЂРѕРІРµРґСѓ Р’Р°С€ РѕР±С‹СЃРє РЅР° РЅР°Р»РёС‡РёРµ Р·Р°РїСЂРµС‰РµРЅРЅС‹С… РїСЂРµРґРјРµС‚РѕРІ.')
             wait(1500)
-            sampSendChat('Ваш обыск фиксируется нательную камеру ВДОЗОРВ.')
+            sampSendChat('Р’Р°С€ РѕР±С‹СЃРє С„РёРєСЃРёСЂСѓРµС‚СЃСЏ РЅР°С‚РµР»СЊРЅСѓСЋ РєР°РјРµСЂСѓ Р’Р”РћР—РћР Р’.')
             wait(1500)
             local hour = os.date('%H')
             local min = os.date('%M')
-            sampSendChat(string.format('Время обыска по местному времени: %s:%s.', hour, min))
+            sampSendChat(string.format('Р’СЂРµРјСЏ РѕР±С‹СЃРєР° РїРѕ РјРµСЃС‚РЅРѕРјСѓ РІСЂРµРјРµРЅРё: %s:%s.', hour, min))
             wait(1500)
-            sampSendChat('/me надел резиновые перчатки, прохлопал по торсу, рукавам и ногам')
+            sampSendChat('/me РЅР°РґРµР» СЂРµР·РёРЅРѕРІС‹Рµ РїРµСЂС‡Р°С‚РєРё, РїСЂРѕС…Р»РѕРїР°Р» РїРѕ С‚РѕСЂСЃСѓ, СЂСѓРєР°РІР°Рј Рё РЅРѕРіР°Рј')
             wait(1500)
-            -- Вставка команды /frisk в чат (без вложенного потока для безопасности)
+            -- Р’СЃС‚Р°РІРєР° РєРѕРјР°РЅРґС‹ /frisk РІ С‡Р°С‚ (Р±РµР· РІР»РѕР¶РµРЅРЅРѕРіРѕ РїРѕС‚РѕРєР° РґР»СЏ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё)
             if not sampIsChatInputActive() and not sampIsDialogActive() and not isSampfuncsConsoleActive() then
                 sampSetChatInputEnabled(true)
                 wait(50)
@@ -392,11 +271,11 @@ local function executeRadialAction(index)
     elseif index == 4 then
         lua_thread.create(function()
             if not (isSampLoaded() and isSampAvailable()) then return end
-            sampSendChat('/me открыв правый нагрудный карман достал от туда удостоверение')
+            sampSendChat('/me РѕС‚РєСЂС‹РІ РїСЂР°РІС‹Р№ РЅР°РіСЂСѓРґРЅС‹Р№ РєР°СЂРјР°РЅ РґРѕСЃС‚Р°Р» РѕС‚ С‚СѓРґР° СѓРґРѕСЃС‚РѕРІРµСЂРµРЅРёРµ')
             wait(1000)
-            sampSendChat('/me раскрыв удостоверение, предъявил его человеку напротив на уровне глаз не передавая в руки')
+            sampSendChat('/me СЂР°СЃРєСЂС‹РІ СѓРґРѕСЃС‚РѕРІРµСЂРµРЅРёРµ, РїСЂРµРґСЉСЏРІРёР» РµРіРѕ С‡РµР»РѕРІРµРєСѓ РЅР°РїСЂРѕС‚РёРІ РЅР° СѓСЂРѕРІРЅРµ РіР»Р°Р· РЅРµ РїРµСЂРµРґР°РІР°СЏ РІ СЂСѓРєРё')
             wait(1000)
-            -- Вставка команды /doc в чат (без вложенного потока для безопасности)
+            -- Р’СЃС‚Р°РІРєР° РєРѕРјР°РЅРґС‹ /doc РІ С‡Р°С‚ (Р±РµР· РІР»РѕР¶РµРЅРЅРѕРіРѕ РїРѕС‚РѕРєР° РґР»СЏ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё)
             if not sampIsChatInputActive() and not sampIsDialogActive() and not isSampfuncsConsoleActive() then
                 sampSetChatInputEnabled(true)
                 wait(50)
@@ -414,40 +293,40 @@ local function executeRadialAction(index)
     elseif index == 5 then
         lua_thread.create(function()
             if not (isSampLoaded() and isSampAvailable()) then return end
-            sampSendChat('/me достал телефон из кармана, затем авторизовался в базе данных')
+            sampSendChat('/me РґРѕСЃС‚Р°Р» С‚РµР»РµС„РѕРЅ РёР· РєР°СЂРјР°РЅР°, Р·Р°С‚РµРј Р°РІС‚РѕСЂРёР·РѕРІР°Р»СЃСЏ РІ Р±Р°Р·Рµ РґР°РЅРЅС‹С…')
             wait(1500)
-            sampSendChat('/do Телефон в руке.')
+            sampSendChat('/do РўРµР»РµС„РѕРЅ РІ СЂСѓРєРµ.')
             wait(1500)
-            sampSendChat('/me сделал фото подозреваемого, затем установил его личность по фотографии')
+            sampSendChat('/me СЃРґРµР»Р°Р» С„РѕС‚Рѕ РїРѕРґРѕР·СЂРµРІР°РµРјРѕРіРѕ, Р·Р°С‚РµРј СѓСЃС‚Р°РЅРѕРІРёР» РµРіРѕ Р»РёС‡РЅРѕСЃС‚СЊ РїРѕ С„РѕС‚РѕРіСЂР°С„РёРё')
             wait(1500)
-            sampSendChat('/do Личность установлена.')
+            sampSendChat('/do Р›РёС‡РЅРѕСЃС‚СЊ СѓСЃС‚Р°РЅРѕРІР»РµРЅР°.')
         end)
     elseif index == 6 then
         lua_thread.create(function()
             if not (isSampLoaded() and isSampAvailable()) then return end
-            sampSendChat('Сейчас измерим вашу тонировку.')
+            sampSendChat('РЎРµР№С‡Р°СЃ РёР·РјРµСЂРёРј РІР°С€Сѓ С‚РѕРЅРёСЂРѕРІРєСѓ.')
             wait(1500)
-            sampSendChat('/me достал тауметр из кармана, затем включил его')
+            sampSendChat('/me РґРѕСЃС‚Р°Р» С‚Р°СѓРјРµС‚СЂ РёР· РєР°СЂРјР°РЅР°, Р·Р°С‚РµРј РІРєР»СЋС‡РёР» РµРіРѕ')
             wait(1500)
-            sampSendChat('/do Прибор включен.')
+            sampSendChat('/do РџСЂРёР±РѕСЂ РІРєР»СЋС‡РµРЅ.')
             wait(1500)
-            sampSendChat('/me приложил прибор к обоим сторонам стекла, затем посмотрел на дисплей')
+            sampSendChat('/me РїСЂРёР»РѕР¶РёР» РїСЂРёР±РѕСЂ Рє РѕР±РѕРёРј СЃС‚РѕСЂРѕРЅР°Рј СЃС‚РµРєР»Р°, Р·Р°С‚РµРј РїРѕСЃРјРѕС‚СЂРµР» РЅР° РґРёСЃРїР»РµР№')
             wait(1500)
-            sampSendChat('/do Прибор показал затемнение больше 70 процентов.')
+            sampSendChat('/do РџСЂРёР±РѕСЂ РїРѕРєР°Р·Р°Р» Р·Р°С‚РµРјРЅРµРЅРёРµ Р±РѕР»СЊС€Рµ 70 РїСЂРѕС†РµРЅС‚РѕРІ.')
         end)
     end
 end
 
 -- ============================================================
--- УПРАВЛЕНИЕ КЛАВИШАМИ
+-- РЈРџР РђР’Р›Р•РќРР• РљР›РђР’РРЁРђРњР
 -- ============================================================
 local VK_NAMES = {
-    [0x01] = "Левая кнопка мыши", [0x02] = "Правая кнопка мыши", [0x04] = "Средняя кнопка мыши",
-    [0x05] = "Боковая кнопка мыши 1 (Назад)", [0x06] = "Боковая кнопка мыши 2 (Вперед)",
+    [0x01] = "Р›РµРІР°СЏ РєРЅРѕРїРєР° РјС‹С€Рё", [0x02] = "РџСЂР°РІР°СЏ РєРЅРѕРїРєР° РјС‹С€Рё", [0x04] = "РЎСЂРµРґРЅСЏСЏ РєРЅРѕРїРєР° РјС‹С€Рё",
+    [0x05] = "Р‘РѕРєРѕРІР°СЏ РєРЅРѕРїРєР° РјС‹С€Рё 1 (РќР°Р·Р°Рґ)", [0x06] = "Р‘РѕРєРѕРІР°СЏ РєРЅРѕРїРєР° РјС‹С€Рё 2 (Р’РїРµСЂРµРґ)",
     [0x08] = "BACKSPACE", [0x09] = "TAB", [0x0D] = "ENTER", [0x10] = "SHIFT", [0x11] = "CTRL", [0x12] = "ALT",
     [0x13] = "PAUSE", [0x14] = "CAPS LOCK", [0x1B] = "ESCAPE", [0x20] = "SPACE",
     [0x21] = "PAGE UP", [0x22] = "PAGE DOWN", [0x23] = "END", [0x24] = "HOME",
-    [0x25] = "Стрелка влево", [0x26] = "Стрелка вверх", [0x27] = "Стрелка вправо", [0x28] = "Стрелка вниз",
+    [0x25] = "РЎС‚СЂРµР»РєР° РІР»РµРІРѕ", [0x26] = "РЎС‚СЂРµР»РєР° РІРІРµСЂС…", [0x27] = "РЎС‚СЂРµР»РєР° РІРїСЂР°РІРѕ", [0x28] = "РЎС‚СЂРµР»РєР° РІРЅРёР·",
     [0x2D] = "INSERT", [0x2E] = "DELETE",
     [0x30] = "0", [0x31] = "1", [0x32] = "2", [0x33] = "3", [0x34] = "4",
     [0x35] = "5", [0x36] = "6", [0x37] = "7", [0x38] = "8", [0x39] = "9",
@@ -471,7 +350,7 @@ local VK_NAMES = {
 
 local function getShortcutName(shortcut_keys)
     if type(shortcut_keys) ~= "table" or #shortcut_keys == 0 then
-        return "Не назначено"
+        return "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ"
     end
 
     local names = {}
@@ -483,62 +362,62 @@ local function getShortcutName(shortcut_keys)
     end
 
     if #names == 0 then
-        return "Не назначено"
+        return "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ"
     end
 
     return table.concat(names, " + ")
 end
 
--- Обратная совместимость
+-- РћР±СЂР°С‚РЅР°СЏ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚СЊ
 local function getKeyName(vk_code)
     if type(vk_code) == "table" then
         return getShortcutName(vk_code)
     elseif vk_code == 0 or not vk_code then
-        return "Не назначено"
+        return "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ"
     else
         return VK_NAMES[vk_code] or ("VK:"..tostring(vk_code))
     end
 end
 
 local SAMP_RESERVED_KEYS = {
-    [0x70] = "F1 (Помощь SAMP)",
-    [0x71] = "F2 (Настройки)",
-    [0x74] = "F5 (Чат)",
-    [0x75] = "F6 (Список игроков)",
-    [0x76] = "F7 (Радар)",
-    [0x7A] = "F11 (Скрыть чат)",
-    [0x09] = "TAB (Список игроков)",
-    [0x0D] = "ENTER (Чат)",
-    [0x54] = "T (Чат)",
+    [0x70] = "F1 (РџРѕРјРѕС‰СЊ SAMP)",
+    [0x71] = "F2 (РќР°СЃС‚СЂРѕР№РєРё)",
+    [0x74] = "F5 (Р§Р°С‚)",
+    [0x75] = "F6 (РЎРїРёСЃРѕРє РёРіСЂРѕРєРѕРІ)",
+    [0x76] = "F7 (Р Р°РґР°СЂ)",
+    [0x7A] = "F11 (РЎРєСЂС‹С‚СЊ С‡Р°С‚)",
+    [0x09] = "TAB (РЎРїРёСЃРѕРє РёРіСЂРѕРєРѕРІ)",
+    [0x0D] = "ENTER (Р§Р°С‚)",
+    [0x54] = "T (Р§Р°С‚)",
 }
 
--- Функция проверки комбинации клавиш
+-- Р¤СѓРЅРєС†РёСЏ РїСЂРѕРІРµСЂРєРё РєРѕРјР±РёРЅР°С†РёРё РєР»Р°РІРёС€
 local function isShortcutPressed(shortcut_keys)
     if type(shortcut_keys) ~= "table" or #shortcut_keys == 0 then return false end
 
-    -- Проверяем, что все клавиши, кроме последней, зажаты
+    -- РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РІСЃРµ РєР»Р°РІРёС€Рё, РєСЂРѕРјРµ РїРѕСЃР»РµРґРЅРµР№, Р·Р°Р¶Р°С‚С‹
     for i = 1, #shortcut_keys - 1 do
         if not isKeyDown(shortcut_keys[i]) then
             return false
         end
     end
 
-    -- Последняя клавиша должна быть только что нажата
+    -- РџРѕСЃР»РµРґРЅСЏСЏ РєР»Р°РІРёС€Р° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ С‚РѕР»СЊРєРѕ С‡С‚Рѕ РЅР°Р¶Р°С‚Р°
     return isKeyJustPressed(shortcut_keys[#shortcut_keys])
 end
 
--- Функция проверки конфликтов комбинаций клавиш
+-- Р¤СѓРЅРєС†РёСЏ РїСЂРѕРІРµСЂРєРё РєРѕРЅС„Р»РёРєС‚РѕРІ РєРѕРјР±РёРЅР°С†РёР№ РєР»Р°РІРёС€
 local function isShortcutAlreadyUsed(shortcut_keys, exclude_rule_index)
     if type(shortcut_keys) ~= "table" or #shortcut_keys == 0 then return false end
 
-    -- Проверка на SAMP клавиши
+    -- РџСЂРѕРІРµСЂРєР° РЅР° SAMP РєР»Р°РІРёС€Рё
     for _, vk_code in ipairs(shortcut_keys) do
         if SAMP_RESERVED_KEYS[vk_code] then
-            return true, "содержит зарезервированную SAMP клавишу: " .. SAMP_RESERVED_KEYS[vk_code]
+            return true, "СЃРѕРґРµСЂР¶РёС‚ Р·Р°СЂРµР·РµСЂРІРёСЂРѕРІР°РЅРЅСѓСЋ SAMP РєР»Р°РІРёС€Сѓ: " .. SAMP_RESERVED_KEYS[vk_code]
         end
     end
 
-    -- Проверка на глобальную клавишу
+    -- РџСЂРѕРІРµСЂРєР° РЅР° РіР»РѕР±Р°Р»СЊРЅСѓСЋ РєР»Р°РІРёС€Сѓ
     if type(orule.config.globalHotkey) == "table" then
         if #shortcut_keys == #orule.config.globalHotkey then
             local match = true
@@ -549,14 +428,14 @@ local function isShortcutAlreadyUsed(shortcut_keys, exclude_rule_index)
                 end
             end
             if match then
-                return true, "глобальной горячей клавишей"
+                return true, "РіР»РѕР±Р°Р»СЊРЅРѕР№ РіРѕСЂСЏС‡РµР№ РєР»Р°РІРёС€РµР№"
             end
         end
     elseif orule.config.globalHotkey ~= 0 and #shortcut_keys == 1 and shortcut_keys[1] == orule.config.globalHotkey then
-        return true, "глобальной горячей клавишей"
+        return true, "РіР»РѕР±Р°Р»СЊРЅРѕР№ РіРѕСЂСЏС‡РµР№ РєР»Р°РІРёС€РµР№"
     end
 
-    -- Проверка на клавиши правил
+    -- РџСЂРѕРІРµСЂРєР° РЅР° РєР»Р°РІРёС€Рё РїСЂР°РІРёР»
     for i, rule in ipairs(orule.rulesDB) do
         if i ~= exclude_rule_index and type(rule.key) == "table" and #rule.key > 0 then
             if #shortcut_keys == #rule.key then
@@ -568,11 +447,11 @@ local function isShortcutAlreadyUsed(shortcut_keys, exclude_rule_index)
                     end
                 end
                 if match then
-                    return true, 'правилом "' .. rule.name .. '"'
+                    return true, 'РїСЂР°РІРёР»РѕРј "' .. rule.name .. '"'
                 end
             end
         elseif i ~= exclude_rule_index and type(rule.key) ~= "table" and rule.key ~= 0 and #shortcut_keys == 1 and shortcut_keys[1] == rule.key then
-            return true, 'правилом "' .. rule.name .. '"'
+            return true, 'РїСЂР°РІРёР»РѕРј "' .. rule.name .. '"'
         end
     end
 
@@ -590,7 +469,7 @@ local function isKeyAlreadyUsed(vk_code, exclude_rule_index)
 end
 
 -- ============================================================
--- РЕНДЕР ТЕКСТА
+-- Р Р•РќР”Р•Р  РўР•РљРЎРўРђ
 -- ============================================================
 local color_cache = {}
 local function getColorFromHex(hex)
@@ -688,12 +567,12 @@ local function renderFormattedText(text)
 end
 
 -- ============================================================
--- КОНФИГУРАЦИЯ
+-- РљРћРќР¤РР“РЈР РђР¦РРЇ
 -- ============================================================
 local function saveConfig()
     local file = io.open(orule.CONFIG_FILE, "w")
     if not file then
-        local error_msg = "[ORULE] Ошибка: Не удалось открыть файл настроек для записи!"
+        local error_msg = "[ORULE] РћС€РёР±РєР°: РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ С„Р°Р№Р» РЅР°СЃС‚СЂРѕРµРє РґР»СЏ Р·Р°РїРёСЃРё!"
         sampAddChatMessage(error_msg, 0xFF0000)
         logError("saveConfig: Failed to open config file for writing: " .. orule.CONFIG_FILE)
         return
@@ -749,22 +628,22 @@ local function loadTextFromFile(filename)
     local filepath = orule.TEXTS_DIR .. '\\' .. filename
     
     if not doesFileExist(filepath) then
-        return "{FF0000}Ошибка: текст не найден.\n{FFFFFF}Проверьте наличие файла " .. filename .. " в папке texts/"
+        return "{FF0000}РћС€РёР±РєР°: С‚РµРєСЃС‚ РЅРµ РЅР°Р№РґРµРЅ.\n{FFFFFF}РџСЂРѕРІРµСЂСЊС‚Рµ РЅР°Р»РёС‡РёРµ С„Р°Р№Р»Р° " .. filename .. " РІ РїР°РїРєРµ texts/"
     end
     
     local file = io.open(filepath, 'rb')
     if not file then
-        return "{FF0000}Ошибка: не удалось открыть файл " .. filename
+        return "{FF0000}РћС€РёР±РєР°: РЅРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ С„Р°Р№Р» " .. filename
     end
     
     local success, content = pcall(file.read, file, '*a')
-    file:close() -- ЗАКРЫВАЕМ ВСЕГДА
+    file:close() -- Р—РђРљР Р«Р’РђР•Рњ Р’РЎР•Р“Р”Рђ
     
     if not success or not content then
-        return "{FF0000}Ошибка чтения файла " .. filename
+        return "{FF0000}РћС€РёР±РєР° С‡С‚РµРЅРёСЏ С„Р°Р№Р»Р° " .. filename
     end
     
-    -- Обработка BOM и кодировок
+    -- РћР±СЂР°Р±РѕС‚РєР° BOM Рё РєРѕРґРёСЂРѕРІРѕРє
     if content:sub(1, 3) == '\xEF\xBB\xBF' then
         content = content:sub(4)
         local decode_success, decoded = pcall(encoding.UTF8.decode, encoding.UTF8, content)
@@ -784,7 +663,7 @@ local function loadTextFromFile(filename)
 end
 
 -- ============================================================
--- ПОИСК
+-- РџРћРРЎРљ
 -- ============================================================
 local function searchInText(text, query)
     if not query or #query == 0 then return {}, {} end
@@ -795,7 +674,7 @@ local function searchInText(text, query)
     local query_text = ffi.string(query)
     local decode_success, query_cp1251 = pcall(encoding.UTF8.decode, encoding.UTF8, query_text)
     if not decode_success then
-        logError("Ошибка декодирования UTF-8 в поиске: " .. tostring(query_cp1251))
+        logError("РћС€РёР±РєР° РґРµРєРѕРґРёСЂРѕРІР°РЅРёСЏ UTF-8 РІ РїРѕРёСЃРєРµ: " .. tostring(query_cp1251))
         query_cp1251 = query_text -- fallback
     end
     query_cp1251 = utf8_lower(query_cp1251)
@@ -931,12 +810,12 @@ local function renderSearchResults(full_text, query)
     local results, all_lines = searchInText(full_text, query)
     
     if #results == 0 then
-        imgui.TextColored(imgui.ImVec4(1.0, 0.5, 0.5, 1.0), u8'Ничего не найдено')
+        imgui.TextColored(imgui.ImVec4(1.0, 0.5, 0.5, 1.0), u8'РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ')
         imgui.Spacing()
-        imgui.TextColored(imgui.ImVec4(0.7, 0.7, 0.75, 1.0), u8'Попробуйте:')
-        imgui.BulletText(u8'Использовать другие слова или синонимы')
-        imgui.BulletText(u8'Проверить правильность написания')
-        imgui.BulletText(u8'Использовать более короткий запрос')
+        imgui.TextColored(imgui.ImVec4(0.7, 0.7, 0.75, 1.0), u8'РџРѕРїСЂРѕР±СѓР№С‚Рµ:')
+        imgui.BulletText(u8'РСЃРїРѕР»СЊР·РѕРІР°С‚СЊ РґСЂСѓРіРёРµ СЃР»РѕРІР° РёР»Рё СЃРёРЅРѕРЅРёРјС‹')
+        imgui.BulletText(u8'РџСЂРѕРІРµСЂРёС‚СЊ РїСЂР°РІРёР»СЊРЅРѕСЃС‚СЊ РЅР°РїРёСЃР°РЅРёСЏ')
+        imgui.BulletText(u8'РСЃРїРѕР»СЊР·РѕРІР°С‚СЊ Р±РѕР»РµРµ РєРѕСЂРѕС‚РєРёР№ Р·Р°РїСЂРѕСЃ')
         imgui.Spacing()
         imgui.Separator()
         imgui.Spacing()
@@ -946,7 +825,7 @@ local function renderSearchResults(full_text, query)
         return
     end
     
-    imgui.TextColored(imgui.ImVec4(0.5, 1.0, 0.5, 1.0), u8(string.format('Найдено: %d', #results)))
+    imgui.TextColored(imgui.ImVec4(0.5, 1.0, 0.5, 1.0), u8(string.format('РќР°Р№РґРµРЅРѕ: %d', #results)))
     imgui.Spacing()
     imgui.Separator()
     imgui.Spacing()
@@ -972,7 +851,7 @@ local function renderSearchResults(full_text, query)
             shown_lines[start_line] = end_line
             
             imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.7, 0.85, 1.0, 1.0))
-            imgui.Text(u8(string.format('Результат #%d', i)))
+            imgui.Text(u8(string.format('Р РµР·СѓР»СЊС‚Р°С‚ #%d', i)))
             imgui.PopStyleColor()
             imgui.Spacing()
             
@@ -1001,8 +880,8 @@ local function loadConfig()
 
     local file = io.open(orule.CONFIG_FILE, "r")
     if not file then
-        -- Файл настроек не найден - это нормально при первом запуске
-        -- Не показываем ошибку пользователю, но логируем для отладки
+        -- Р¤Р°Р№Р» РЅР°СЃС‚СЂРѕРµРє РЅРµ РЅР°Р№РґРµРЅ - СЌС‚Рѕ РЅРѕСЂРјР°Р»СЊРЅРѕ РїСЂРё РїРµСЂРІРѕРј Р·Р°РїСѓСЃРєРµ
+        -- РќРµ РїРѕРєР°Р·С‹РІР°РµРј РѕС€РёР±РєСѓ РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ, РЅРѕ Р»РѕРіРёСЂСѓРµРј РґР»СЏ РѕС‚Р»Р°РґРєРё
         logError("loadConfig: Config file not found (first run?): " .. orule.CONFIG_FILE)
         return
     end
@@ -1013,7 +892,7 @@ local function loadConfig()
 
         local ghk = line:match("^globalHotkey:(.+)")
         if ghk then
-            -- Проверяем, содержит ли строка запятые (массив клавиш)
+            -- РџСЂРѕРІРµСЂСЏРµРј, СЃРѕРґРµСЂР¶РёС‚ Р»Рё СЃС‚СЂРѕРєР° Р·Р°РїСЏС‚С‹Рµ (РјР°СЃСЃРёРІ РєР»Р°РІРёС€)
             if string.find(ghk, ",") then
                 local key_array = {}
                 for key_str in string.gmatch(ghk, "[^,]+") do
@@ -1028,7 +907,7 @@ local function loadConfig()
                     orule.config.globalHotkey = 0
                 end
             else
-                -- Одиночная клавиша (для обратной совместимости)
+                -- РћРґРёРЅРѕС‡РЅР°СЏ РєР»Р°РІРёС€Р° (РґР»СЏ РѕР±СЂР°С‚РЅРѕР№ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё)
                 orule.config.globalHotkey = tonumber(ghk) or 0
             end
         end
@@ -1078,7 +957,7 @@ local function loadConfig()
         
         local r_idx, r_key = line:match("^rule_(%d+)_key:(.+)")
         if r_idx and orule.rulesDB[tonumber(r_idx)] then
-            -- Проверяем, содержит ли строка запятые (массив клавиш)
+            -- РџСЂРѕРІРµСЂСЏРµРј, СЃРѕРґРµСЂР¶РёС‚ Р»Рё СЃС‚СЂРѕРєР° Р·Р°РїСЏС‚С‹Рµ (РјР°СЃСЃРёРІ РєР»Р°РІРёС€)
             if string.find(r_key, ",") then
                 local key_array = {}
                 for key_str in string.gmatch(r_key, "[^,]+") do
@@ -1092,7 +971,7 @@ local function loadConfig()
                     orule.rulesDB[tonumber(r_idx)].keyName = getShortcutName(key_array)
                 end
             else
-                -- Одиночная клавиша (для обратной совместимости)
+                -- РћРґРёРЅРѕС‡РЅР°СЏ РєР»Р°РІРёС€Р° (РґР»СЏ РѕР±СЂР°С‚РЅРѕР№ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё)
                 local key_val = tonumber(r_key) or 0
                 orule.rulesDB[tonumber(r_idx)].key = key_val
                 orule.rulesDB[tonumber(r_idx)].keyName = getKeyName(key_val)
@@ -1117,15 +996,15 @@ end
 
 local function initRadialBuffers()
     for i, btn in ipairs(radialMenu.buttons) do
-        local name_cp1251 = btn.name or ("Кнопка " .. i)
-        -- Конвертируем CP1251 ? UTF-8 для ImGui
+        local name_cp1251 = btn.name or ("РљРЅРѕРїРєР° " .. i)
+        -- РљРѕРЅРІРµСЂС‚РёСЂСѓРµРј CP1251 ? UTF-8 РґР»СЏ ImGui
         local name_utf8 = u8(name_cp1251)
         ffi.copy(radialButtonBuffers[i], name_utf8, math.min(#name_utf8, 63))
     end
 end
 
 -- ============================================================
--- ПРАВИЛА
+-- РџР РђР’РР›Рђ
 -- ============================================================
 local function getPoliceRuleText(tabIndex)
     local files = {"police_main.txt", "police_radar.txt", "police_mask.txt", "police_tint.txt"}
@@ -1153,15 +1032,15 @@ local function getMVDStatuteText() return loadTextFromFile("mvd_statute.txt") en
 
 local function initStaticRules()
     orule.rulesDB = {
-        {name = "Правила для полицейских", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
-        {name = "Законодательная база", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
-        {name = "ФЗ \"О закрытых и охраняемых территориях\"", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
-        {name = "ФЗ \"О системе нормативно-правовых актов Нижегородской области\"", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
-        {name = "Уголовно-процессуальный кодекс", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
-        {name = "Трудовой кодекс", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
-        {name = "Министерство Внутренних Дел | Справочник Сотрудника", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
-        {name = "Министерство Внутренних дел | Правила строевого устава", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
-        {name = "Министерство Внутренних Дел | Устав", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false}
+        {name = "РџСЂР°РІРёР»Р° РґР»СЏ РїРѕР»РёС†РµР№СЃРєРёС…", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false},
+        {name = "Р—Р°РєРѕРЅРѕРґР°С‚РµР»СЊРЅР°СЏ Р±Р°Р·Р°", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false},
+        {name = "Р¤Р— \"Рћ Р·Р°РєСЂС‹С‚С‹С… Рё РѕС…СЂР°РЅСЏРµРјС‹С… С‚РµСЂСЂРёС‚РѕСЂРёСЏС…\"", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false},
+        {name = "Р¤Р— \"Рћ СЃРёСЃС‚РµРјРµ РЅРѕСЂРјР°С‚РёРІРЅРѕ-РїСЂР°РІРѕРІС‹С… Р°РєС‚РѕРІ РќРёР¶РµРіРѕСЂРѕРґСЃРєРѕР№ РѕР±Р»Р°СЃС‚Рё\"", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false},
+        {name = "РЈРіРѕР»РѕРІРЅРѕ-РїСЂРѕС†РµСЃСЃСѓР°Р»СЊРЅС‹Р№ РєРѕРґРµРєСЃ", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false},
+        {name = "РўСЂСѓРґРѕРІРѕР№ РєРѕРґРµРєСЃ", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false},
+        {name = "РњРёРЅРёСЃС‚РµСЂСЃС‚РІРѕ Р’РЅСѓС‚СЂРµРЅРЅРёС… Р”РµР» | РЎРїСЂР°РІРѕС‡РЅРёРє РЎРѕС‚СЂСѓРґРЅРёРєР°", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false},
+        {name = "РњРёРЅРёСЃС‚РµСЂСЃС‚РІРѕ Р’РЅСѓС‚СЂРµРЅРЅРёС… РґРµР» | РџСЂР°РІРёР»Р° СЃС‚СЂРѕРµРІРѕРіРѕ СѓСЃС‚Р°РІР°", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false},
+        {name = "РњРёРЅРёСЃС‚РµСЂСЃС‚РІРѕ Р’РЅСѓС‚СЂРµРЅРЅРёС… Р”РµР» | РЈСЃС‚Р°РІ", updateDate = "08.11.2025", key = {}, keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ", holdMode = false}
     }
 end
 
@@ -1173,7 +1052,7 @@ local function loadAllRules()
 end
 
 -- ============================================================
--- СТИЛИ
+-- РЎРўРР›Р
 -- ============================================================
 local function ApplyCustomTheme()
     local style = imgui.GetStyle()
@@ -1301,7 +1180,7 @@ imgui.OnInitialize(function()
     if doesFileExist(radar_map_path) then
         radar_map_texture = imgui.CreateTextureFromFile(radar_map_path)
         if not radar_map_texture then
-            print('[ORULE] Ошибка загрузки текстуры: radar_map.png')
+            print('[ORULE] РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё С‚РµРєСЃС‚СѓСЂС‹: radar_map.png')
         end
     end
 
@@ -1310,14 +1189,14 @@ imgui.OnInitialize(function()
         if doesFileExist(ter_path) then
             territory_textures[i] = imgui.CreateTextureFromFile(ter_path)
             if not territory_textures[i] then
-                print('[ORULE] Ошибка загрузки текстуры: ter_' .. i .. '.jpg')
+                print('[ORULE] РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё С‚РµРєСЃС‚СѓСЂС‹: ter_' .. i .. '.jpg')
             end
         end
     end
 end)
 
 -- ============================================================
--- OVERLAY ИНТЕРФЕЙС
+-- OVERLAY РРќРўР•Р Р¤Р•Р™РЎ
 -- ============================================================
 imgui.OnFrame(
     function() return overlay_visible end,
@@ -1354,10 +1233,10 @@ imgui.OnFrame(
                 
                 if rule.updateDate then
                     imgui.Spacing()
-                    imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 1.0), u8('Последнее обновление: ' .. rule.updateDate))
+                    imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 1.0), u8('РџРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ: ' .. rule.updateDate))
                 end
                 
-                -- Вкладки для правил полиции
+                -- Р’РєР»Р°РґРєРё РґР»СЏ РїСЂР°РІРёР» РїРѕР»РёС†РёРё
                 if overlay_rule_index == 1 then
                     imgui.Spacing()
                     local avail_width = imgui.GetContentRegionAvail().x
@@ -1375,7 +1254,7 @@ imgui.OnFrame(
                             imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.40, 0.35, 0.90, 1.00))
                         end
                         
-                        local labels = {u8'Правила для полицейских', u8'Правила использования радара', u8'Порядок снятия масок', u8'Регламент проверки тонировки'}
+                        local labels = {u8'РџСЂР°РІРёР»Р° РґР»СЏ РїРѕР»РёС†РµР№СЃРєРёС…', u8'РџСЂР°РІРёР»Р° РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ СЂР°РґР°СЂР°', u8'РџРѕСЂСЏРґРѕРє СЃРЅСЏС‚РёСЏ РјР°СЃРѕРє', u8'Р РµРіР»Р°РјРµРЅС‚ РїСЂРѕРІРµСЂРєРё С‚РѕРЅРёСЂРѕРІРєРё'}
                         if imgui.Button(labels[i+1]..'##police_tab_'..i, imgui.ImVec2(button_width, 30)) then
                             policeRuleActiveTab[0] = i
                         end
@@ -1385,7 +1264,7 @@ imgui.OnFrame(
                     imgui.Spacing()
                 end
                 
-                -- Вкладки для законодательной базы
+                -- Р’РєР»Р°РґРєРё РґР»СЏ Р·Р°РєРѕРЅРѕРґР°С‚РµР»СЊРЅРѕР№ Р±Р°Р·С‹
                 if overlay_rule_index == 2 then
                     imgui.Spacing()
                     local avail_width = imgui.GetContentRegionAvail().x
@@ -1396,8 +1275,8 @@ imgui.OnFrame(
                     local current_tab = legalBaseActiveTab[0] or 0
                     
                     local button_texts = {
-                        u8'КОНСТИТУЦИЯ', u8'ФЕДЕРАЛЬНОЕ ПОСТАНОВЛЕНИЕ', u8'УГОЛОВНЫЙ КОДЕКС',
-                        u8'КоАП', u8'ЗАКОН О ПОЛИЦИИ', u8'ЗАКОН О ФСБ'
+                        u8'РљРћРќРЎРўРРўРЈР¦РРЇ', u8'Р¤Р•Р”Р•Р РђР›Р¬РќРћР• РџРћРЎРўРђРќРћР’Р›Р•РќРР•', u8'РЈР“РћР›РћР’РќР«Р™ РљРћР”Р•РљРЎ',
+                        u8'РљРѕРђРџ', u8'Р—РђРљРћРќ Рћ РџРћР›РР¦РР', u8'Р—РђРљРћРќ Рћ Р¤РЎР‘'
                     }
                     
                     for i = 0, 5 do
@@ -1419,7 +1298,7 @@ imgui.OnFrame(
                     imgui.Spacing()
                 end
                 
-                -- Вкладки для территорий
+                -- Р’РєР»Р°РґРєРё РґР»СЏ С‚РµСЂСЂРёС‚РѕСЂРёР№
                 if overlay_rule_index == 3 then
                     imgui.Spacing()
                     local avail_width = imgui.GetContentRegionAvail().x
@@ -1430,8 +1309,8 @@ imgui.OnFrame(
                     local current_tab = territoryActiveTab[0] or 0
                     
                     local button_texts = {
-                        u8'Основные положения', u8'МВД', u8'ФСБ', u8'АРМИЯ', u8'ФСИН',
-                        u8'МЧС', u8'БОЛЬНИЦА', u8'СМИ', u8'ПРАВИТЕЛЬСТВО'
+                        u8'РћСЃРЅРѕРІРЅС‹Рµ РїРѕР»РѕР¶РµРЅРёСЏ', u8'РњР’Р”', u8'Р¤РЎР‘', u8'РђР РњРРЇ', u8'Р¤РЎРРќ',
+                        u8'РњР§РЎ', u8'Р‘РћР›Р¬РќРР¦Рђ', u8'РЎРњР', u8'РџР РђР’РРўР•Р›Р¬РЎРўР’Рћ'
                     }
                     
                     for i = 0, 8 do
@@ -1460,7 +1339,7 @@ imgui.OnFrame(
                 if main_font then imgui.PushFont(main_font) end
                 imgui.SetWindowFontScale(orule.config.fontSize / 17.0)
                 
-                -- Загрузка текста
+                -- Р—Р°РіСЂСѓР·РєР° С‚РµРєСЃС‚Р°
                 local full_text = ''
                 if overlay_rule_index == 1 then
                     full_text = getPoliceRuleText(policeRuleActiveTab[0] or 0)
@@ -1488,16 +1367,16 @@ imgui.OnFrame(
                     full_text = getMVDStatuteText()
                 end
 
-                if not full_text or #full_text == 0 or full_text:match("^{FF0000}Ошибка") then
-                    full_text = "{FF6B6B}Ошибка загрузки текста.\n{FFFFFF}Проверьте наличие файлов в папке texts/"
+                if not full_text or #full_text == 0 or full_text:match("^{FF0000}РћС€РёР±РєР°") then
+                    full_text = "{FF6B6B}РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё С‚РµРєСЃС‚Р°.\n{FFFFFF}РџСЂРѕРІРµСЂСЊС‚Рµ РЅР°Р»РёС‡РёРµ С„Р°Р№Р»РѕРІ РІ РїР°РїРєРµ texts/"
                 end
                 
-                -- Поле поиска
+                -- РџРѕР»Рµ РїРѕРёСЃРєР°
                 imgui.PushStyleColor(imgui.Col.FrameBg, imgui.ImVec4(0.15, 0.15, 0.18, 0.95))
                 imgui.PushStyleColor(imgui.Col.FrameBgHovered, imgui.ImVec4(0.20, 0.20, 0.24, 0.95))
                 imgui.PushStyleColor(imgui.Col.FrameBgActive, imgui.ImVec4(0.25, 0.25, 0.30, 0.95))
                 imgui.PushItemWidth(-1)
-                imgui.InputTextWithHint('##search_overlay', u8'Поиск по тексту...', search_buffer, 256)
+                imgui.InputTextWithHint('##search_overlay', u8'РџРѕРёСЃРє РїРѕ С‚РµРєСЃС‚Сѓ...', search_buffer, 256)
                 imgui.PopItemWidth()
                 imgui.PopStyleColor(3)
 
@@ -1518,11 +1397,11 @@ imgui.OnFrame(
                     renderSearchResults(full_text, query)
                 end
                 
-                -- Фотографии территорий МВД
+                -- Р¤РѕС‚РѕРіСЂР°С„РёРё С‚РµСЂСЂРёС‚РѕСЂРёР№ РњР’Р”
                 if overlay_rule_index == 3 and territoryActiveTab[0] == 1 then
                     imgui.Spacing()
                     imgui.Spacing()
-                    if imgui.CollapsingHeader(u8'Фотографии##territory_mvd_photos') then
+                    if imgui.CollapsingHeader(u8'Р¤РѕС‚РѕРіСЂР°С„РёРё##territory_mvd_photos') then
                         local window_width = imgui.GetWindowWidth()
                         local spacing = imgui.GetStyle().ItemSpacing.x
                         local padding = imgui.GetStyle().WindowPadding.x * 2
@@ -1536,18 +1415,18 @@ imgui.OnFrame(
                             if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
                                 pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
-                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
+                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('РћС€РёР±РєР°: ter_' .. i .. '.jpg'))
                             end
                             if i % images_per_row == 0 and i < 6 then imgui.Spacing() end
                         end
                     end
                 end
                 
-                -- Фотографии территорий ФСБ
+                -- Р¤РѕС‚РѕРіСЂР°С„РёРё С‚РµСЂСЂРёС‚РѕСЂРёР№ Р¤РЎР‘
                 if overlay_rule_index == 3 and territoryActiveTab[0] == 2 then
                     imgui.Spacing()
                     imgui.Spacing()
-                    if imgui.CollapsingHeader(u8'Фотографии##territory_fsb_photos') then
+                    if imgui.CollapsingHeader(u8'Р¤РѕС‚РѕРіСЂР°С„РёРё##territory_fsb_photos') then
                         if territory_textures[7] and imgui.IsTextureValid(territory_textures[7]) then
                             local window_width = imgui.GetWindowWidth()
                             local spacing = imgui.GetStyle().ItemSpacing.x
@@ -1558,16 +1437,16 @@ imgui.OnFrame(
                             local image_height = math.floor(image_width * 0.57)
                             pcall(function() imgui.Image(territory_textures[7], imgui.ImVec2(image_width, image_height)) end)
                         else
-                            imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'Ошибка: Фотография ter_7.jpg не найдена!')
+                            imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'РћС€РёР±РєР°: Р¤РѕС‚РѕРіСЂР°С„РёСЏ ter_7.jpg РЅРµ РЅР°Р№РґРµРЅР°!')
                         end
                     end
                 end
                 
-                -- Фотографии территорий АРМИЯ
+                -- Р¤РѕС‚РѕРіСЂР°С„РёРё С‚РµСЂСЂРёС‚РѕСЂРёР№ РђР РњРРЇ
                 if overlay_rule_index == 3 and territoryActiveTab[0] == 3 then
                     imgui.Spacing()
                     imgui.Spacing()
-                    if imgui.CollapsingHeader(u8'Фотографии##territory_army_photos') then
+                    if imgui.CollapsingHeader(u8'Р¤РѕС‚РѕРіСЂР°С„РёРё##territory_army_photos') then
                         if territory_textures[8] and imgui.IsTextureValid(territory_textures[8]) then
                             local window_width = imgui.GetWindowWidth()
                             local spacing = imgui.GetStyle().ItemSpacing.x
@@ -1578,16 +1457,16 @@ imgui.OnFrame(
                             local image_height = math.floor(image_width * 0.57)
                             pcall(function() imgui.Image(territory_textures[8], imgui.ImVec2(image_width, image_height)) end)
                         else
-                            imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'Ошибка: Фотография ter_8.jpg не найдена!')
+                            imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'РћС€РёР±РєР°: Р¤РѕС‚РѕРіСЂР°С„РёСЏ ter_8.jpg РЅРµ РЅР°Р№РґРµРЅР°!')
                         end
                     end
                 end
                 
-                -- Фотографии территорий МЧС
+                -- Р¤РѕС‚РѕРіСЂР°С„РёРё С‚РµСЂСЂРёС‚РѕСЂРёР№ РњР§РЎ
                 if overlay_rule_index == 3 and territoryActiveTab[0] == 5 then
                     imgui.Spacing()
                     imgui.Spacing()
-                    if imgui.CollapsingHeader(u8'Фотографии##territory_mchs_photos') then
+                    if imgui.CollapsingHeader(u8'Р¤РѕС‚РѕРіСЂР°С„РёРё##territory_mchs_photos') then
                         local window_width = imgui.GetWindowWidth()
                         local spacing = imgui.GetStyle().ItemSpacing.x
                         local padding = imgui.GetStyle().WindowPadding.x * 2
@@ -1602,18 +1481,18 @@ imgui.OnFrame(
                             if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
                                 pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
-                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
+                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('РћС€РёР±РєР°: ter_' .. i .. '.jpg'))
                             end
                             if idx % images_per_row == 0 and i < 12 then imgui.Spacing() end
                         end
                     end
                 end
                 
-                -- Фотографии больницы
+                -- Р¤РѕС‚РѕРіСЂР°С„РёРё Р±РѕР»СЊРЅРёС†С‹
                 if overlay_rule_index == 3 and territoryActiveTab[0] == 6 then
                     imgui.Spacing()
                     imgui.Spacing()
-                    if imgui.CollapsingHeader(u8'Фотографии##territory_hospital_photos') then
+                    if imgui.CollapsingHeader(u8'Р¤РѕС‚РѕРіСЂР°С„РёРё##territory_hospital_photos') then
                         local window_width = imgui.GetWindowWidth()
                         local spacing = imgui.GetStyle().ItemSpacing.x
                         local padding = imgui.GetStyle().WindowPadding.x * 2
@@ -1628,18 +1507,18 @@ imgui.OnFrame(
                             if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
                                 pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
-                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
+                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('РћС€РёР±РєР°: ter_' .. i .. '.jpg'))
                             end
                             if idx % images_per_row == 0 and i < 15 then imgui.Spacing() end
                         end
                     end
                 end
                 
-                -- Фотографии СМИ
+                -- Р¤РѕС‚РѕРіСЂР°С„РёРё РЎРњР
                 if overlay_rule_index == 3 and territoryActiveTab[0] == 7 then
                     imgui.Spacing()
                     imgui.Spacing()
-                    if imgui.CollapsingHeader(u8'Фотографии##territory_smi_photos') then
+                    if imgui.CollapsingHeader(u8'Р¤РѕС‚РѕРіСЂР°С„РёРё##territory_smi_photos') then
                         local window_width = imgui.GetWindowWidth()
                         local spacing = imgui.GetStyle().ItemSpacing.x
                         local padding = imgui.GetStyle().WindowPadding.x * 2
@@ -1654,17 +1533,17 @@ imgui.OnFrame(
                             if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
                                 pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
-                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
+                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('РћС€РёР±РєР°: ter_' .. i .. '.jpg'))
                             end
                         end
                     end
                 end
                 
-                -- Фотографии правительства
+                -- Р¤РѕС‚РѕРіСЂР°С„РёРё РїСЂР°РІРёС‚РµР»СЊСЃС‚РІР°
                 if overlay_rule_index == 3 and territoryActiveTab[0] == 8 then
                     imgui.Spacing()
                     imgui.Spacing()
-                    if imgui.CollapsingHeader(u8'Фотографии##territory_government_photos') then
+                    if imgui.CollapsingHeader(u8'Р¤РѕС‚РѕРіСЂР°С„РёРё##territory_government_photos') then
                         local window_width = imgui.GetWindowWidth()
                         local spacing = imgui.GetStyle().ItemSpacing.x
                         local padding = imgui.GetStyle().WindowPadding.x * 2
@@ -1679,25 +1558,25 @@ imgui.OnFrame(
                             if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
                                 pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
-                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
+                                imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('РћС€РёР±РєР°: ter_' .. i .. '.jpg'))
                             end
                             if idx % images_per_row == 0 and i < 20 then imgui.Spacing() end
                         end
                     end
                 end
                 
-                -- Карта радаров
+                -- РљР°СЂС‚Р° СЂР°РґР°СЂРѕРІ
                 if overlay_rule_index == 1 and policeRuleActiveTab[0] == 1 then
                     imgui.Spacing()
                     imgui.Spacing()
-                    if imgui.CollapsingHeader(u8'Карта радаров##radar_map') then
+                    if imgui.CollapsingHeader(u8'РљР°СЂС‚Р° СЂР°РґР°СЂРѕРІ##radar_map') then
                         if radar_map_texture and imgui.IsTextureValid(radar_map_texture) then
                             local avail_width = imgui.GetContentRegionAvail().x
                             local image_width = avail_width * 0.95
                             local image_height = image_width * 0.75
                             pcall(function() imgui.Image(radar_map_texture, imgui.ImVec2(image_width, image_height)) end)
                         else
-                            imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'Ошибка: Карта радаров не найдена!')
+                            imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'РћС€РёР±РєР°: РљР°СЂС‚Р° СЂР°РґР°СЂРѕРІ РЅРµ РЅР°Р№РґРµРЅР°!')
                         end
                     end
                 end
@@ -1714,12 +1593,12 @@ imgui.OnFrame(
 )
 
 -- ============================================================
--- ВКЛАДКА ПРАВИЛ
+-- Р’РљР›РђР”РљРђ РџР РђР’РР›
 -- ============================================================
 local function renderRulesTab()
     local is_capturing_any = (key_capture_mode ~= nil)
     
-    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Список правил')
+    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РЎРїРёСЃРѕРє РїСЂР°РІРёР»')
     imgui.Spacing()
     imgui.Spacing()
     
@@ -1742,12 +1621,12 @@ local function renderRulesTab()
         if imgui.BeginChild('##rule_card_' .. i, imgui.ImVec2(-20, orule.config.ruleCardHeight), true) then
             imgui.Spacing()
             imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.95, 0.95, 1.00, 1.00))
-            imgui.Text(u8(rule.name or 'Без названия'))
+            imgui.Text(u8(rule.name or 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ'))
             imgui.PopStyleColor(1)
             
             if rule.updateDate then
                 imgui.Spacing()
-                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Последнее обновление: ')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'РџРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ: ')
                 imgui.SameLine(0, 5)
                 imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 0.70), u8(rule.updateDate))
             end
@@ -1757,7 +1636,7 @@ local function renderRulesTab()
             local key_name = getKeyName(rule.key)
             local has_key = (type(rule.key) == "table" and #rule.key > 0) or (type(rule.key) ~= "table" and rule.key > 0)
             local key_color = not has_key and imgui.ImVec4(0.60, 0.60, 0.65, 0.70) or imgui.ImVec4(0.50, 0.45, 1.00, 0.90)
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Клавиша: ')
+            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РљР»Р°РІРёС€Р°: ')
             imgui.SameLine(0, 5)
             imgui.TextColored(key_color, u8(key_name))
             
@@ -1769,7 +1648,7 @@ local function renderRulesTab()
             local avail_width = window_width - padding - 24
             local spacing = imgui.GetStyle().ItemSpacing.x
             
-            local holdModeText = rule.holdMode and u8'Удержание' or u8'Без удержания'
+            local holdModeText = rule.holdMode and u8'РЈРґРµСЂР¶Р°РЅРёРµ' or u8'Р‘РµР· СѓРґРµСЂР¶Р°РЅРёСЏ'
             local hold_color = rule.holdMode and imgui.ImVec4(0.50, 0.45, 1.00, 0.80) or imgui.ImVec4(0.40, 0.40, 0.45, 0.80)
             imgui.PushStyleColor(imgui.Col.Button, hold_color)
             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.60, 0.55, 1.00, 0.90))
@@ -1784,7 +1663,7 @@ local function renderRulesTab()
             
             imgui.SameLine()
 
-            local bind_text = is_capturing_this and u8'Нажмите клавишу или комбинацию... (Backspace отмена)' or u8'Назначить клавишу'
+            local bind_text = is_capturing_this and u8'РќР°Р¶РјРёС‚Рµ РєР»Р°РІРёС€Сѓ РёР»Рё РєРѕРјР±РёРЅР°С†РёСЋ... (Backspace РѕС‚РјРµРЅР°)' or u8'РќР°Р·РЅР°С‡РёС‚СЊ РєР»Р°РІРёС€Сѓ'
             
             if is_capturing_this then
                 imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.90, 0.60, 0.20, 1.00))
@@ -1825,9 +1704,9 @@ local function renderRulesTab()
                 end
                 
                 local button_width_reset = (avail_width - spacing * 2) / 3
-                if imgui.Button(u8'Сбросить клавишу##reset_'..i, imgui.ImVec2(button_width_reset, button_height)) and not is_capturing_any then
+                if imgui.Button(u8'РЎР±СЂРѕСЃРёС‚СЊ РєР»Р°РІРёС€Сѓ##reset_'..i, imgui.ImVec2(button_width_reset, button_height)) and not is_capturing_any then
                     rule.key = {}
-                    rule.keyName = "Не назначено"
+                    rule.keyName = "РќРµ РЅР°Р·РЅР°С‡РµРЅРѕ"
                     saveConfig()
                 end
                 imgui.PopStyleColor(3)
@@ -1846,7 +1725,7 @@ end
 local function renderRadialMenuTab()
     local is_capturing_any = (key_capture_mode ~= nil)
 
-    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Настройки радиального меню')
+    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РќР°СЃС‚СЂРѕР№РєРё СЂР°РґРёР°Р»СЊРЅРѕРіРѕ РјРµРЅСЋ')
     imgui.Spacing()
     imgui.Spacing()
 
@@ -1861,17 +1740,17 @@ local function renderRadialMenuTab()
 
     if imgui.BeginChild('##radial_global_settings', imgui.ImVec2(-20, 118), true) then
         imgui.Spacing()
-        imgui.TextColored(imgui.ImVec4(0.95, 0.95, 1.00, 1.00), u8'Глобальные настройки')
+        imgui.TextColored(imgui.ImVec4(0.95, 0.95, 1.00, 1.00), u8'Р“Р»РѕР±Р°Р»СЊРЅС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё')
         imgui.Spacing()
 
         local enabled_checkbox = imgui.new.bool(radialMenu.globalEnabled)
-        if imgui.Checkbox(u8'Включить радиальное меню (средняя кнопка мыши)', enabled_checkbox) and not is_capturing_any then
+        if imgui.Checkbox(u8'Р’РєР»СЋС‡РёС‚СЊ СЂР°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ (СЃСЂРµРґРЅСЏСЏ РєРЅРѕРїРєР° РјС‹С€Рё)', enabled_checkbox) and not is_capturing_any then
             radialMenu.globalEnabled = enabled_checkbox[0]
             saveConfig()
         end
 
         if imgui.IsItemHovered() then
-            imgui.SetTooltip(u8'При отключении радиальное меню не будет открываться')
+            imgui.SetTooltip(u8'РџСЂРё РѕС‚РєР»СЋС‡РµРЅРёРё СЂР°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ РЅРµ Р±СѓРґРµС‚ РѕС‚РєСЂС‹РІР°С‚СЊСЃСЏ')
         end
 
         imgui.Spacing()
@@ -1883,9 +1762,9 @@ local function renderRadialMenuTab()
     imgui.Spacing()
     imgui.Spacing()
 
-    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Настройка кнопок радиального меню')
+    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РќР°СЃС‚СЂРѕР№РєР° РєРЅРѕРїРѕРє СЂР°РґРёР°Р»СЊРЅРѕРіРѕ РјРµРЅСЋ')
     imgui.Spacing()
-    imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Всего доступно 6 кнопок. Можно менять названия и включать/выключать их.')
+    imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Р’СЃРµРіРѕ РґРѕСЃС‚СѓРїРЅРѕ 6 РєРЅРѕРїРѕРє. РњРѕР¶РЅРѕ РјРµРЅСЏС‚СЊ РЅР°Р·РІР°РЅРёСЏ Рё РІРєР»СЋС‡Р°С‚СЊ/РІС‹РєР»СЋС‡Р°С‚СЊ РёС….')
     imgui.Spacing()
     imgui.Spacing()
 
@@ -1901,22 +1780,22 @@ local function renderRadialMenuTab()
         if imgui.BeginChild('##radial_button_card_' .. i, imgui.ImVec2(-20, 167), true) then
             imgui.Spacing()
             imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.95, 0.95, 1.00, 1.00))
-            imgui.Text(u8('Кнопка #' .. i))
+            imgui.Text(u8('РљРЅРѕРїРєР° #' .. i))
             imgui.PopStyleColor(1)
             imgui.Spacing()
 
             local btn_enabled = imgui.new.bool(btn.enabled)
-            if imgui.Checkbox(u8('Включена##btn_' .. i), btn_enabled) and not is_capturing_any then
+            if imgui.Checkbox(u8('Р’РєР»СЋС‡РµРЅР°##btn_' .. i), btn_enabled) and not is_capturing_any then
                 btn.enabled = btn_enabled[0]
                 saveConfig()
             end
 
             imgui.Spacing()
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Название:')
+            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РќР°Р·РІР°РЅРёРµ:')
             imgui.SameLine()
             imgui.PushItemWidth(-100)
 
-            -- InputText в реальном времени обновляет буфер
+            -- InputText РІ СЂРµР°Р»СЊРЅРѕРј РІСЂРµРјРµРЅРё РѕР±РЅРѕРІР»СЏРµС‚ Р±СѓС„РµСЂ
             imgui.InputText('##radial_btn_name_' .. i, radialButtonBuffers[i], 64)
 
             imgui.PopItemWidth()
@@ -1925,25 +1804,25 @@ local function renderRadialMenuTab()
             imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.50, 0.45, 1.00, 0.80))
             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.60, 0.55, 1.00, 0.90))
             imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.40, 0.35, 0.90, 1.00))
-            if imgui.Button(u8'Сохранить##save_btn_' .. i, imgui.ImVec2(90, 0)) and not is_capturing_any then
-                -- Читаем из буфера (UTF-8 от ImGui)
+            if imgui.Button(u8'РЎРѕС…СЂР°РЅРёС‚СЊ##save_btn_' .. i, imgui.ImVec2(90, 0)) and not is_capturing_any then
+                -- Р§РёС‚Р°РµРј РёР· Р±СѓС„РµСЂР° (UTF-8 РѕС‚ ImGui)
                 local new_name_utf8 = ffi.string(radialButtonBuffers[i])
-                -- Конвертируем UTF-8 ? CP1251 для сохранения
+                -- РљРѕРЅРІРµСЂС‚РёСЂСѓРµРј UTF-8 ? CP1251 РґР»СЏ СЃРѕС…СЂР°РЅРµРЅРёСЏ
                 local decode_success, new_name_cp1251 = pcall(encoding.UTF8.decode, encoding.UTF8, new_name_utf8)
                 if not decode_success then
-                    logError("Ошибка декодирования UTF-8 в сохранении: " .. tostring(new_name_cp1251))
+                    logError("РћС€РёР±РєР° РґРµРєРѕРґРёСЂРѕРІР°РЅРёСЏ UTF-8 РІ СЃРѕС…СЂР°РЅРµРЅРёРё: " .. tostring(new_name_cp1251))
                     new_name_cp1251 = new_name_utf8 -- fallback
                 end
                 
                 if #new_name_cp1251 > 0 and #new_name_cp1251 <= 63 then
                     btn.name = new_name_cp1251
                     saveConfig()
-                    -- После сохранения обновляем буфер
+                    -- РџРѕСЃР»Рµ СЃРѕС…СЂР°РЅРµРЅРёСЏ РѕР±РЅРѕРІР»СЏРµРј Р±СѓС„РµСЂ
                     local name_utf8_updated = u8(new_name_cp1251)
                     ffi.copy(radialButtonBuffers[i], name_utf8_updated, math.min(#name_utf8_updated, 63))
-                    sampAddChatMessage('[ORULE] Название кнопки #' .. i .. ' сохранено!', 0x00FF00)
+                    sampAddChatMessage('[ORULE] РќР°Р·РІР°РЅРёРµ РєРЅРѕРїРєРё #' .. i .. ' СЃРѕС…СЂР°РЅРµРЅРѕ!', 0x00FF00)
                 else
-                    sampAddChatMessage('[ORULE] Ошибка: название не может быть пустым или слишком длинным', 0xFF0000)
+                    sampAddChatMessage('[ORULE] РћС€РёР±РєР°: РЅР°Р·РІР°РЅРёРµ РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚С‹Рј РёР»Рё СЃР»РёС€РєРѕРј РґР»РёРЅРЅС‹Рј', 0xFF0000)
                 end
             end
             imgui.PopStyleColor(3)
@@ -1966,22 +1845,22 @@ local function renderRadialMenuTab()
     imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
     if imgui.BeginChild('##radial_info', imgui.ImVec2(-20, 499), true) then
         imgui.Spacing()
-        imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Информация о действиях кнопок')
+        imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РґРµР№СЃС‚РІРёСЏС… РєРЅРѕРїРѕРє')
         imgui.Spacing()
         imgui.Separator()
         imgui.Spacing()
 
         local descriptions = {
-            u8'Предупреждение водителю через громкоговоритель',
-            u8'Чтение прав задержанному (Миранда)',
-            u8'Проведение обыска с нательной камерой и /frisk',
-            u8'Предъявление служебного удостоверения и /doc',
-            u8'Установление личности по фотографии',
-            u8'Проверка тонировки тауметром'
+            u8'РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ РІРѕРґРёС‚РµР»СЋ С‡РµСЂРµР· РіСЂРѕРјРєРѕРіРѕРІРѕСЂРёС‚РµР»СЊ',
+            u8'Р§С‚РµРЅРёРµ РїСЂР°РІ Р·Р°РґРµСЂР¶Р°РЅРЅРѕРјСѓ (РњРёСЂР°РЅРґР°)',
+            u8'РџСЂРѕРІРµРґРµРЅРёРµ РѕР±С‹СЃРєР° СЃ РЅР°С‚РµР»СЊРЅРѕР№ РєР°РјРµСЂРѕР№ Рё /frisk',
+            u8'РџСЂРµРґСЉСЏРІР»РµРЅРёРµ СЃР»СѓР¶РµР±РЅРѕРіРѕ СѓРґРѕСЃС‚РѕРІРµСЂРµРЅРёСЏ Рё /doc',
+            u8'РЈСЃС‚Р°РЅРѕРІР»РµРЅРёРµ Р»РёС‡РЅРѕСЃС‚Рё РїРѕ С„РѕС‚РѕРіСЂР°С„РёРё',
+            u8'РџСЂРѕРІРµСЂРєР° С‚РѕРЅРёСЂРѕРІРєРё С‚Р°СѓРјРµС‚СЂРѕРј'
         }
 
         for i, desc in ipairs(descriptions) do
-            imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8('Кнопка #' .. i .. ':'))
+            imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8('РљРЅРѕРїРєР° #' .. i .. ':'))
             imgui.BulletText(desc)
             imgui.Spacing()
         end
@@ -1989,7 +1868,7 @@ local function renderRadialMenuTab()
         imgui.Separator()
         imgui.Spacing()
         imgui.PushTextWrapPos(0)
-        imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Примечание: Изменение названия кнопки влияет только на отображение в меню и не меняет действие.')
+        imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'РџСЂРёРјРµС‡Р°РЅРёРµ: РР·РјРµРЅРµРЅРёРµ РЅР°Р·РІР°РЅРёСЏ РєРЅРѕРїРєРё РІР»РёСЏРµС‚ С‚РѕР»СЊРєРѕ РЅР° РѕС‚РѕР±СЂР°Р¶РµРЅРёРµ РІ РјРµРЅСЋ Рё РЅРµ РјРµРЅСЏРµС‚ РґРµР№СЃС‚РІРёРµ.')
         imgui.PopTextWrapPos()
         imgui.Spacing()
     end
@@ -1999,12 +1878,12 @@ local function renderRadialMenuTab()
 end
 
 -- ============================================================
--- ВКЛАДКА НАСТРОЕК
+-- Р’РљР›РђР”РљРђ РќРђРЎРўР РћР•Рљ
 -- ============================================================
 local function validateCommand(cmd)
-    if not cmd or #cmd == 0 then return false, "Команда не может быть пустой" end
-    if #cmd > 31 then return false, "Команда слишком длинная (макс. 31 символ)" end
-    if cmd:match("[^%w_]") then return false, "Команда может содержать только буквы, цифры и _" end
+    if not cmd or #cmd == 0 then return false, "РљРѕРјР°РЅРґР° РЅРµ РјРѕР¶РµС‚ Р±С‹С‚СЊ РїСѓСЃС‚РѕР№" end
+    if #cmd > 31 then return false, "РљРѕРјР°РЅРґР° СЃР»РёС€РєРѕРј РґР»РёРЅРЅР°СЏ (РјР°РєСЃ. 31 СЃРёРјРІРѕР»)" end
+    if cmd:match("[^%w_]") then return false, "РљРѕРјР°РЅРґР° РјРѕР¶РµС‚ СЃРѕРґРµСЂР¶Р°С‚СЊ С‚РѕР»СЊРєРѕ Р±СѓРєРІС‹, С†РёС„СЂС‹ Рё _" end
     return true
 end
 
@@ -2013,21 +1892,21 @@ local function renderSettingsTab()
     local is_capturing_global = (key_capture_type == "global")
     local disabled_color = imgui.ImVec4(0.30, 0.30, 0.35, 0.60)
 
-    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Команда активации')
+    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РљРѕРјР°РЅРґР° Р°РєС‚РёРІР°С†РёРё')
     imgui.Spacing()
 
     if is_capturing_any and not is_capturing_global then
         imgui.PushStyleVarFloat(imgui.StyleVar.Alpha, 0.5)
     end
     
-    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Команда для открытия меню:')
+    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'РљРѕРјР°РЅРґР° РґР»СЏ РѕС‚РєСЂС‹С‚РёСЏ РјРµРЅСЋ:')
     imgui.Spacing()
     
     imgui.PushItemWidth(-20)
     imgui.InputText('##command', commandBuf, 32)
     imgui.PopItemWidth()
     if imgui.IsItemHovered() then 
-        imgui.SetTooltip(u8'Команда для открытия меню (например: /orule)') 
+        imgui.SetTooltip(u8'РљРѕРјР°РЅРґР° РґР»СЏ РѕС‚РєСЂС‹С‚РёСЏ РјРµРЅСЋ (РЅР°РїСЂРёРјРµСЂ: /orule)') 
     end
     
     if is_capturing_any and not is_capturing_global then
@@ -2037,13 +1916,13 @@ local function renderSettingsTab()
     imgui.Spacing()
     imgui.Spacing()
     
-    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Горячие клавиши')
+    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Р“РѕСЂСЏС‡РёРµ РєР»Р°РІРёС€Рё')
     imgui.Spacing()
     
-    local bind_text_global = is_capturing_global and u8'Нажмите клавишу или комбинацию... (Backspace отмена)' or (u8'Клавиша: '..u8(getKeyName(orule.config.globalHotkey))..u8' (нажмите для изменения)')
+    local bind_text_global = is_capturing_global and u8'РќР°Р¶РјРёС‚Рµ РєР»Р°РІРёС€Сѓ РёР»Рё РєРѕРјР±РёРЅР°С†РёСЋ... (Backspace РѕС‚РјРµРЅР°)' or (u8'РљР»Р°РІРёС€Р°: '..u8(getKeyName(orule.config.globalHotkey))..u8' (РЅР°Р¶РјРёС‚Рµ РґР»СЏ РёР·РјРµРЅРµРЅРёСЏ)')
     local is_blocked_global = is_capturing_any and not is_capturing_global
     
-    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Глобальная горячая клавиша для меню:')
+    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Р“Р»РѕР±Р°Р»СЊРЅР°СЏ РіРѕСЂСЏС‡Р°СЏ РєР»Р°РІРёС€Р° РґР»СЏ РјРµРЅСЋ:')
     imgui.Spacing()
     
     if is_capturing_global then
@@ -2066,7 +1945,7 @@ local function renderSettingsTab()
     imgui.PopStyleColor(3)
     
     if imgui.IsItemHovered() then 
-        imgui.SetTooltip(u8'Горячая клавиша для быстрого открытия меню (0 = отключена)') 
+        imgui.SetTooltip(u8'Р“РѕСЂСЏС‡Р°СЏ РєР»Р°РІРёС€Р° РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ РѕС‚РєСЂС‹С‚РёСЏ РјРµРЅСЋ (0 = РѕС‚РєР»СЋС‡РµРЅР°)') 
     end
     
     imgui.Spacing()
@@ -2082,7 +1961,7 @@ local function renderSettingsTab()
             imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.70, 0.25, 0.25, 1.00))
         end
         
-        if imgui.Button(u8'Сбросить клавишу##reset_global', imgui.ImVec2(-20, 40)) and not is_capturing_any then
+        if imgui.Button(u8'РЎР±СЂРѕСЃРёС‚СЊ РєР»Р°РІРёС€Сѓ##reset_global', imgui.ImVec2(-20, 40)) and not is_capturing_any then
             orule.config.globalHotkey = {}
             saveConfig()
         end
@@ -2092,14 +1971,14 @@ local function renderSettingsTab()
     imgui.Spacing()
     imgui.Spacing()
     
-    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Настройки отображения overlay')
+    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РќР°СЃС‚СЂРѕР№РєРё РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ overlay')
     imgui.Spacing()
     
     if is_capturing_any then
         imgui.PushStyleVarFloat(imgui.StyleVar.Alpha, 0.5)
     end
 
-    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Прозрачность фона:')
+    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'РџСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ С„РѕРЅР°:')
     local alpha_val = imgui.new.float[1](orule.config.overlayBgAlpha)
     imgui.PushItemWidth(-20)
     if imgui.SliderFloat('##alpha', alpha_val, 0.0, 1.0, u8'%.2f') and not is_capturing_any then
@@ -2111,7 +1990,7 @@ local function renderSettingsTab()
     imgui.Spacing()
     imgui.Spacing()
     
-    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Размер шрифта:')
+    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Р Р°Р·РјРµСЂ С€СЂРёС„С‚Р°:')
     local font_val = imgui.new.float[1](orule.config.fontSize)
     imgui.PushItemWidth(-20)
     if imgui.SliderFloat('##fontsize', font_val, 12.0, 32.0, u8'%.0f') and not is_capturing_any then
@@ -2123,7 +2002,7 @@ local function renderSettingsTab()
     imgui.Spacing()
     imgui.Spacing()
     
-    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Расстояние между строками:')
+    imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Р Р°СЃСЃС‚РѕСЏРЅРёРµ РјРµР¶РґСѓ СЃС‚СЂРѕРєР°РјРё:')
     local spacing_val = imgui.new.float[1](orule.config.lineSpacing)
     imgui.PushItemWidth(-20)
     if imgui.SliderFloat('##linespacing', spacing_val, 0.0, 1.0, u8'%.2f') and not is_capturing_any then
@@ -2132,7 +2011,7 @@ local function renderSettingsTab()
     end
     imgui.PopItemWidth()
     if imgui.IsItemHovered() then 
-        imgui.SetTooltip(u8'Расстояние между строками текста (множитель от высоты строки)') 
+        imgui.SetTooltip(u8'Р Р°СЃСЃС‚РѕСЏРЅРёРµ РјРµР¶РґСѓ СЃС‚СЂРѕРєР°РјРё С‚РµРєСЃС‚Р° (РјРЅРѕР¶РёС‚РµР»СЊ РѕС‚ РІС‹СЃРѕС‚С‹ СЃС‚СЂРѕРєРё)') 
     end
     
     if is_capturing_any then
@@ -2142,7 +2021,7 @@ local function renderSettingsTab()
     imgui.Spacing()
     imgui.Spacing()
 
-    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Обновление ресурсов')
+    imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РћР±РЅРѕРІР»РµРЅРёРµ СЂРµСЃСѓСЂСЃРѕРІ')
     imgui.Spacing()
     
     if is_capturing_any then
@@ -2150,13 +2029,13 @@ local function renderSettingsTab()
     end
     
     local auto_update_checkbox = imgui.new.bool(orule.config.autoUpdateTexts)
-    if imgui.Checkbox(u8'Автоматически обновлять текстовые файлы', auto_update_checkbox) and not is_capturing_any then
+    if imgui.Checkbox(u8'РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРё РѕР±РЅРѕРІР»СЏС‚СЊ С‚РµРєСЃС‚РѕРІС‹Рµ С„Р°Р№Р»С‹', auto_update_checkbox) and not is_capturing_any then
         orule.config.autoUpdateTexts = auto_update_checkbox[0]
         saveConfig()
     end
     
     if imgui.IsItemHovered() then
-        imgui.SetTooltip(u8'При выключении текстовые файлы не будут перезаписываться при обновлении.\nШрифты и изображения всё равно будут обновляться.')
+        imgui.SetTooltip(u8'РџСЂРё РІС‹РєР»СЋС‡РµРЅРёРё С‚РµРєСЃС‚РѕРІС‹Рµ С„Р°Р№Р»С‹ РЅРµ Р±СѓРґСѓС‚ РїРµСЂРµР·Р°РїРёСЃС‹РІР°С‚СЊСЃСЏ РїСЂРё РѕР±РЅРѕРІР»РµРЅРёРё.\nРЁСЂРёС„С‚С‹ Рё РёР·РѕР±СЂР°Р¶РµРЅРёСЏ РІСЃС‘ СЂР°РІРЅРѕ Р±СѓРґСѓС‚ РѕР±РЅРѕРІР»СЏС‚СЊСЃСЏ.')
     end
     
     if is_capturing_any then
@@ -2176,16 +2055,16 @@ local function renderSettingsTab()
         imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.40, 0.35, 0.90, 1.00))
     end
     
-    if imgui.Button(u8'Сохранить настройки команды', imgui.ImVec2(-20, 45)) and not is_capturing_any then
+    if imgui.Button(u8'РЎРѕС…СЂР°РЅРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё РєРѕРјР°РЅРґС‹', imgui.ImVec2(-20, 45)) and not is_capturing_any then
         local new_command = ffi.string(commandBuf)
         local valid, error_msg = validateCommand(new_command)
         
         if not valid then
-            sampAddChatMessage('[ORULE] Ошибка: ' .. error_msg, 0xFF0000)
+            sampAddChatMessage('[ORULE] РћС€РёР±РєР°: ' .. error_msg, 0xFF0000)
         else
             orule.config.command = new_command
             saveConfig()
-            sampAddChatMessage('[ORULE] Настройки сохранены! Перезапустите скрипт (CTRL+R)', 0x45AFFF)
+            sampAddChatMessage('[ORULE] РќР°СЃС‚СЂРѕР№РєРё СЃРѕС…СЂР°РЅРµРЅС‹! РџРµСЂРµР·Р°РїСѓСЃС‚РёС‚Рµ СЃРєСЂРёРїС‚ (CTRL+R)', 0x45AFFF)
         end
     end
     
@@ -2193,11 +2072,11 @@ local function renderSettingsTab()
 end
 
 -- ============================================================
--- ГЛАВНОЕ ОКНО
+-- Р“Р›РђР’РќРћР• РћРљРќРћ
 -- ============================================================
 local function renderInfoWindow()
     local sw, sh = getScreenResolution()
-    -- Адаптивный размер: максимум 90% от высоты экрана
+    -- РђРґР°РїС‚РёРІРЅС‹Р№ СЂР°Р·РјРµСЂ: РјР°РєСЃРёРјСѓРј 90% РѕС‚ РІС‹СЃРѕС‚С‹ СЌРєСЂР°РЅР°
     local adaptive_height = math.min(orule.config.windowHeight or 800, sh * 0.9)
     local adaptive_width = math.min(orule.config.windowWidth or 820, sw * 0.9)
 
@@ -2210,7 +2089,7 @@ local function renderInfoWindow()
 
     local window_flags = imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoResize
 
-    if imgui.Begin(u8'Добро пожаловать в ORULE!', show_info_window, window_flags) then
+    if imgui.Begin(u8'Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ ORULE!', show_info_window, window_flags) then
         imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.08, 0.08, 0.12, 1.00))
         imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 8.0)
         imgui.PushStyleVarFloat(imgui.StyleVar.ChildBorderSize, 1.0)
@@ -2231,14 +2110,14 @@ local function renderInfoWindow()
             imgui.Spacing()
 
             if main_font then imgui.PushFont(main_font) end
-            local subtitle_text = u8'Продвинутый менеджер правил с overlay-интерфейсом'
+            local subtitle_text = u8'РџСЂРѕРґРІРёРЅСѓС‚С‹Р№ РјРµРЅРµРґР¶РµСЂ РїСЂР°РІРёР» СЃ overlay-РёРЅС‚РµСЂС„РµР№СЃРѕРј'
             local subtitle_width = imgui.CalcTextSize(subtitle_text).x
             imgui.SetCursorPosX((window_width - subtitle_width) * 0.5)
             imgui.TextColored(imgui.ImVec4(0.90, 0.90, 0.95, 1.00), subtitle_text)
 
             imgui.Spacing()
 
-            local author_text = u8'Автор: Lev Exelent (vk.com/e11evated)'
+            local author_text = u8'РђРІС‚РѕСЂ: Lev Exelent (vk.com/e11evated)'
             local author_width = imgui.CalcTextSize(author_text).x
             imgui.SetCursorPosX((window_width - author_width) * 0.5)
             imgui.TextColored(imgui.ImVec4(0.80, 0.80, 0.85, 1.00), author_text)
@@ -2255,36 +2134,36 @@ local function renderInfoWindow()
 
         imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.0, 0.0, 0.0, 0.0))
         if imgui.BeginChild('##info_content', imgui.ImVec2(0, -61), false) then
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Добро пожаловать в ORULE!')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ ORULE!')
             imgui.Spacing()
             imgui.PushTextWrapPos(0)
-            imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Спасибо, что выбрали ORULE - самый функциональный менеджер правил для MoonLoader!')
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Этот инструмент создан специально для сотрудников государственных организаций на Cyber Russia.')
+            imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'РЎРїР°СЃРёР±Рѕ, С‡С‚Рѕ РІС‹Р±СЂР°Р»Рё ORULE - СЃР°РјС‹Р№ С„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Р№ РјРµРЅРµРґР¶РµСЂ РїСЂР°РІРёР» РґР»СЏ MoonLoader!')
+            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Р­С‚РѕС‚ РёРЅСЃС‚СЂСѓРјРµРЅС‚ СЃРѕР·РґР°РЅ СЃРїРµС†РёР°Р»СЊРЅРѕ РґР»СЏ СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РіРѕСЃСѓРґР°СЂСЃС‚РІРµРЅРЅС‹С… РѕСЂРіР°РЅРёР·Р°С†РёР№ РЅР° Cyber Russia.')
             imgui.PopTextWrapPos()
 
             imgui.Spacing()
             imgui.Separator()
             imgui.Spacing()
 
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Основные возможности')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РћСЃРЅРѕРІРЅС‹Рµ РІРѕР·РјРѕР¶РЅРѕСЃС‚Рё')
             imgui.Spacing()
-            imgui.BulletText(u8'Overlay-интерфейс - просмотр правил поверх игры без сворачивания')
-            imgui.BulletText(u8'Горячие клавиши - назначьте свои биндки для каждого правила')
-            imgui.BulletText(u8'Радиальное меню - быстрый доступ к командам через среднюю кнопку мыши')
-            imgui.BulletText(u8'Умный поиск - находит информацию с учетом синонимов и контекста')
-            imgui.BulletText(u8'Режим удержания - показывайте правило только пока удерживаете клавишу')
-            imgui.BulletText(u8'Настройка внешнего вида - шрифт, прозрачность, размеры окон')
-            imgui.BulletText(u8'Карты радаров и фотографии территорий - все под рукой')
-            imgui.BulletText(u8'Автообновление - скрипт и ресурсы обновляются автоматически')
-            imgui.BulletText(u8'9 готовых правил для МВД с актуальной информацией')
-            imgui.BulletText(u8'Полная законодательная база (Конституция, УК, КоАП, ФЗ)')
-            imgui.BulletText(u8'Информация о закрытых территориях всех фракций')
+            imgui.BulletText(u8'Overlay-РёРЅС‚РµСЂС„РµР№СЃ - РїСЂРѕСЃРјРѕС‚СЂ РїСЂР°РІРёР» РїРѕРІРµСЂС… РёРіСЂС‹ Р±РµР· СЃРІРѕСЂР°С‡РёРІР°РЅРёСЏ')
+            imgui.BulletText(u8'Р“РѕСЂСЏС‡РёРµ РєР»Р°РІРёС€Рё - РЅР°Р·РЅР°С‡СЊС‚Рµ СЃРІРѕРё Р±РёРЅРґРєРё РґР»СЏ РєР°Р¶РґРѕРіРѕ РїСЂР°РІРёР»Р°')
+            imgui.BulletText(u8'Р Р°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ - Р±С‹СЃС‚СЂС‹Р№ РґРѕСЃС‚СѓРї Рє РєРѕРјР°РЅРґР°Рј С‡РµСЂРµР· СЃСЂРµРґРЅСЋСЋ РєРЅРѕРїРєСѓ РјС‹С€Рё')
+            imgui.BulletText(u8'РЈРјРЅС‹Р№ РїРѕРёСЃРє - РЅР°С…РѕРґРёС‚ РёРЅС„РѕСЂРјР°С†РёСЋ СЃ СѓС‡РµС‚РѕРј СЃРёРЅРѕРЅРёРјРѕРІ Рё РєРѕРЅС‚РµРєСЃС‚Р°')
+            imgui.BulletText(u8'Р РµР¶РёРј СѓРґРµСЂР¶Р°РЅРёСЏ - РїРѕРєР°Р·С‹РІР°Р№С‚Рµ РїСЂР°РІРёР»Рѕ С‚РѕР»СЊРєРѕ РїРѕРєР° СѓРґРµСЂР¶РёРІР°РµС‚Рµ РєР»Р°РІРёС€Сѓ')
+            imgui.BulletText(u8'РќР°СЃС‚СЂРѕР№РєР° РІРЅРµС€РЅРµРіРѕ РІРёРґР° - С€СЂРёС„С‚, РїСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ, СЂР°Р·РјРµСЂС‹ РѕРєРѕРЅ')
+            imgui.BulletText(u8'РљР°СЂС‚С‹ СЂР°РґР°СЂРѕРІ Рё С„РѕС‚РѕРіСЂР°С„РёРё С‚РµСЂСЂРёС‚РѕСЂРёР№ - РІСЃРµ РїРѕРґ СЂСѓРєРѕР№')
+            imgui.BulletText(u8'РђРІС‚РѕРѕР±РЅРѕРІР»РµРЅРёРµ - СЃРєСЂРёРїС‚ Рё СЂРµСЃСѓСЂСЃС‹ РѕР±РЅРѕРІР»СЏСЋС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё')
+            imgui.BulletText(u8'9 РіРѕС‚РѕРІС‹С… РїСЂР°РІРёР» РґР»СЏ РњР’Р” СЃ Р°РєС‚СѓР°Р»СЊРЅРѕР№ РёРЅС„РѕСЂРјР°С†РёРµР№')
+            imgui.BulletText(u8'РџРѕР»РЅР°СЏ Р·Р°РєРѕРЅРѕРґР°С‚РµР»СЊРЅР°СЏ Р±Р°Р·Р° (РљРѕРЅСЃС‚РёС‚СѓС†РёСЏ, РЈРљ, РљРѕРђРџ, Р¤Р—)')
+            imgui.BulletText(u8'РРЅС„РѕСЂРјР°С†РёСЏ Рѕ Р·Р°РєСЂС‹С‚С‹С… С‚РµСЂСЂРёС‚РѕСЂРёСЏС… РІСЃРµС… С„СЂР°РєС†РёР№')
 
             imgui.Spacing()
             imgui.Separator()
             imgui.Spacing()
 
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Быстрый старт')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Р‘С‹СЃС‚СЂС‹Р№ СЃС‚Р°СЂС‚')
             imgui.Spacing()
             
             imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.11, 0.11, 0.13, 0.95))
@@ -2293,38 +2172,38 @@ local function renderInfoWindow()
                 imgui.Spacing()
                 imgui.Indent(10)
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 1:')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РЁР°Рі 1:')
                 imgui.SameLine(0, 5)
                 imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Перейдите во вкладку "Правила" и назначьте горячие клавиши')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РџРµСЂРµР№РґРёС‚Рµ РІРѕ РІРєР»Р°РґРєСѓ "РџСЂР°РІРёР»Р°" Рё РЅР°Р·РЅР°С‡СЊС‚Рµ РіРѕСЂСЏС‡РёРµ РєР»Р°РІРёС€Рё')
                 imgui.PopTextWrapPos()
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 2:')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РЁР°Рі 2:')
                 imgui.SameLine(0, 5)
                 imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Настройте радиальное меню во вкладке "Радиальное меню"')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РќР°СЃС‚СЂРѕР№С‚Рµ СЂР°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ РІРѕ РІРєР»Р°РґРєРµ "Р Р°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ"')
                 imgui.PopTextWrapPos()
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 3:')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РЁР°Рі 3:')
                 imgui.SameLine(0, 5)
                 imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Настройте внешний вид overlay во вкладке "Настройки"')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РќР°СЃС‚СЂРѕР№С‚Рµ РІРЅРµС€РЅРёР№ РІРёРґ overlay РІРѕ РІРєР»Р°РґРєРµ "РќР°СЃС‚СЂРѕР№РєРё"')
                 imgui.PopTextWrapPos()
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 4:')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РЁР°Рі 4:')
                 imgui.SameLine(0, 5)
                 imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Нажмите назначенную клавишу для открытия overlay с правилом')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РќР°Р¶РјРёС‚Рµ РЅР°Р·РЅР°С‡РµРЅРЅСѓСЋ РєР»Р°РІРёС€Сѓ РґР»СЏ РѕС‚РєСЂС‹С‚РёСЏ overlay СЃ РїСЂР°РІРёР»РѕРј')
                 imgui.PopTextWrapPos()
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Шаг 5:')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РЁР°Рі 5:')
                 imgui.SameLine(0, 5)
                 imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Используйте поиск для быстрого нахождения нужной информации')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРѕРёСЃРє РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ РЅР°С…РѕР¶РґРµРЅРёСЏ РЅСѓР¶РЅРѕР№ РёРЅС„РѕСЂРјР°С†РёРё')
                 imgui.PopTextWrapPos()
                 
                 imgui.Unindent(10)
@@ -2338,7 +2217,7 @@ local function renderInfoWindow()
             imgui.Separator()
             imgui.Spacing()
 
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Управление')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РЈРїСЂР°РІР»РµРЅРёРµ')
             imgui.Spacing()
             
             imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.11, 0.11, 0.13, 0.95))
@@ -2352,25 +2231,25 @@ local function renderInfoWindow()
                 
                 imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'/' .. u8(orule.config.command))
                 imgui.NextColumn()
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Открыть/закрыть меню настроек')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РћС‚РєСЂС‹С‚СЊ/Р·Р°РєСЂС‹С‚СЊ РјРµРЅСЋ РЅР°СЃС‚СЂРѕРµРє')
                 imgui.NextColumn()
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'Средняя кнопка мыши')
+                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'РЎСЂРµРґРЅСЏСЏ РєРЅРѕРїРєР° РјС‹С€Рё')
                 imgui.NextColumn()
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Радиальное меню (удерживать)')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Р Р°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ (СѓРґРµСЂР¶РёРІР°С‚СЊ)')
                 imgui.NextColumn()
                 imgui.Spacing()
                 
                 imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'ESC')
                 imgui.NextColumn()
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Закрыть overlay с правилом')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Р—Р°РєСЂС‹С‚СЊ overlay СЃ РїСЂР°РІРёР»РѕРј')
                 imgui.NextColumn()
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'Назначенная клавиша')
+                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'РќР°Р·РЅР°С‡РµРЅРЅР°СЏ РєР»Р°РІРёС€Р°')
                 imgui.NextColumn()
-                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Открыть/закрыть конкретное правило')
+                imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РћС‚РєСЂС‹С‚СЊ/Р·Р°РєСЂС‹С‚СЊ РєРѕРЅРєСЂРµС‚РЅРѕРµ РїСЂР°РІРёР»Рѕ')
                 imgui.NextColumn()
                 
                 imgui.Columns(1)
@@ -2385,10 +2264,10 @@ local function renderInfoWindow()
             imgui.Separator()
             imgui.Spacing()
 
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Радиальное меню')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Р Р°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ')
             imgui.Spacing()
             imgui.PushTextWrapPos(0)
-            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Удерживайте среднюю кнопку мыши и выберите действие.')
+            imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'РЈРґРµСЂР¶РёРІР°Р№С‚Рµ СЃСЂРµРґРЅСЋСЋ РєРЅРѕРїРєСѓ РјС‹С€Рё Рё РІС‹Р±РµСЂРёС‚Рµ РґРµР№СЃС‚РІРёРµ.')
             imgui.PopTextWrapPos()
             imgui.Spacing()
             
@@ -2398,28 +2277,28 @@ local function renderInfoWindow()
                 imgui.Spacing()
                 imgui.Indent(10)
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 1 - Мегафон')
-                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Предупреждение водителю через громкоговоритель')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РљРЅРѕРїРєР° 1 - РњРµРіР°С„РѕРЅ')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ РІРѕРґРёС‚РµР»СЋ С‡РµСЂРµР· РіСЂРѕРјРєРѕРіРѕРІРѕСЂРёС‚РµР»СЊ')
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 2 - Миранда')
-                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Чтение прав задержанному')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РљРЅРѕРїРєР° 2 - РњРёСЂР°РЅРґР°')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Р§С‚РµРЅРёРµ РїСЂР°РІ Р·Р°РґРµСЂР¶Р°РЅРЅРѕРјСѓ')
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 3 - Обыск')
-                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Проведение обыска с нательной камерой и /frisk')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РљРЅРѕРїРєР° 3 - РћР±С‹СЃРє')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'РџСЂРѕРІРµРґРµРЅРёРµ РѕР±С‹СЃРєР° СЃ РЅР°С‚РµР»СЊРЅРѕР№ РєР°РјРµСЂРѕР№ Рё /frisk')
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 4 - Удостоверение')
-                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Предъявление служебного удостоверения и /doc')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РљРЅРѕРїРєР° 4 - РЈРґРѕСЃС‚РѕРІРµСЂРµРЅРёРµ')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'РџСЂРµРґСЉСЏРІР»РµРЅРёРµ СЃР»СѓР¶РµР±РЅРѕРіРѕ СѓРґРѕСЃС‚РѕРІРµСЂРµРЅРёСЏ Рё /doc')
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 5 - Фоторобот')
-                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Установление личности по фотографии')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РљРЅРѕРїРєР° 5 - Р¤РѕС‚РѕСЂРѕР±РѕС‚')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'РЈСЃС‚Р°РЅРѕРІР»РµРЅРёРµ Р»РёС‡РЅРѕСЃС‚Рё РїРѕ С„РѕС‚РѕРіСЂР°С„РёРё')
                 imgui.Spacing()
                 
-                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'Кнопка 6 - Тонировка')
-                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'Проверка тонировки тауметром')
+                imgui.TextColored(imgui.ImVec4(0.90, 0.85, 1.00, 1.00), u8'РљРЅРѕРїРєР° 6 - РўРѕРЅРёСЂРѕРІРєР°')
+                imgui.TextColored(imgui.ImVec4(0.70, 0.70, 0.75, 0.90), u8'РџСЂРѕРІРµСЂРєР° С‚РѕРЅРёСЂРѕРІРєРё С‚Р°СѓРјРµС‚СЂРѕРј')
                 
                 imgui.Unindent(10)
                 imgui.Spacing()
@@ -2432,31 +2311,31 @@ local function renderInfoWindow()
             imgui.Separator()
             imgui.Spacing()
 
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Что нового в версии 1.1')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Р§С‚Рѕ РЅРѕРІРѕРіРѕ РІ РІРµСЂСЃРёРё 1.1')
             imgui.Spacing()
-            imgui.BulletText(u8'Первый публичный релиз')
-            imgui.BulletText(u8'9 готовых правил для МВД с актуальной информацией')
-            imgui.BulletText(u8'Полная законодательная база (Конституция, УК, КоАП, ФЗ)')
-            imgui.BulletText(u8'Информация о закрытых территориях всех фракций')
-            imgui.BulletText(u8'Интерактивные карты радаров и фотографии территорий')
-            imgui.BulletText(u8'Радиальное меню с настраиваемыми кнопками')
-            imgui.BulletText(u8'Умный поиск с синонимами')
-            imgui.BulletText(u8'Автообновление скрипта и ресурсов')
-            imgui.BulletText(u8'Селективное обновление текстовых файлов')
-            imgui.BulletText(u8'Гибкая система настройки под себя')
+            imgui.BulletText(u8'РџРµСЂРІС‹Р№ РїСѓР±Р»РёС‡РЅС‹Р№ СЂРµР»РёР·')
+            imgui.BulletText(u8'9 РіРѕС‚РѕРІС‹С… РїСЂР°РІРёР» РґР»СЏ РњР’Р” СЃ Р°РєС‚СѓР°Р»СЊРЅРѕР№ РёРЅС„РѕСЂРјР°С†РёРµР№')
+            imgui.BulletText(u8'РџРѕР»РЅР°СЏ Р·Р°РєРѕРЅРѕРґР°С‚РµР»СЊРЅР°СЏ Р±Р°Р·Р° (РљРѕРЅСЃС‚РёС‚СѓС†РёСЏ, РЈРљ, РљРѕРђРџ, Р¤Р—)')
+            imgui.BulletText(u8'РРЅС„РѕСЂРјР°С†РёСЏ Рѕ Р·Р°РєСЂС‹С‚С‹С… С‚РµСЂСЂРёС‚РѕСЂРёСЏС… РІСЃРµС… С„СЂР°РєС†РёР№')
+            imgui.BulletText(u8'РРЅС‚РµСЂР°РєС‚РёРІРЅС‹Рµ РєР°СЂС‚С‹ СЂР°РґР°СЂРѕРІ Рё С„РѕС‚РѕРіСЂР°С„РёРё С‚РµСЂСЂРёС‚РѕСЂРёР№')
+            imgui.BulletText(u8'Р Р°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ СЃ РЅР°СЃС‚СЂР°РёРІР°РµРјС‹РјРё РєРЅРѕРїРєР°РјРё')
+            imgui.BulletText(u8'РЈРјРЅС‹Р№ РїРѕРёСЃРє СЃ СЃРёРЅРѕРЅРёРјР°РјРё')
+            imgui.BulletText(u8'РђРІС‚РѕРѕР±РЅРѕРІР»РµРЅРёРµ СЃРєСЂРёРїС‚Р° Рё СЂРµСЃСѓСЂСЃРѕРІ')
+            imgui.BulletText(u8'РЎРµР»РµРєС‚РёРІРЅРѕРµ РѕР±РЅРѕРІР»РµРЅРёРµ С‚РµРєСЃС‚РѕРІС‹С… С„Р°Р№Р»РѕРІ')
+            imgui.BulletText(u8'Р“РёР±РєР°СЏ СЃРёСЃС‚РµРјР° РЅР°СЃС‚СЂРѕР№РєРё РїРѕРґ СЃРµР±СЏ')
 
             imgui.Spacing()
             imgui.Separator()
             imgui.Spacing()
 
-            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Полезные советы')
+            imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'РџРѕР»РµР·РЅС‹Рµ СЃРѕРІРµС‚С‹')
             imgui.Spacing()
-            imgui.BulletText(u8'Используйте поиск с минусом (-слово) для исключения результатов')
-            imgui.BulletText(u8'Режим удержания идеален для быстрого показа правил игрокам')
-            imgui.BulletText(u8'Настройте прозрачность overlay под свои предпочтения')
-            imgui.BulletText(u8'Все файлы правил находятся в папке moonloader/OverlayRules/texts/')
-            imgui.BulletText(u8'Вы можете редактировать тексты правил в любом текстовом редакторе')
-            imgui.BulletText(u8'Отключите "Автообновление текстов" если изменяли файлы правил')
+            imgui.BulletText(u8'РСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРѕРёСЃРє СЃ РјРёРЅСѓСЃРѕРј (-СЃР»РѕРІРѕ) РґР»СЏ РёСЃРєР»СЋС‡РµРЅРёСЏ СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ')
+            imgui.BulletText(u8'Р РµР¶РёРј СѓРґРµСЂР¶Р°РЅРёСЏ РёРґРµР°Р»РµРЅ РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ РїРѕРєР°Р·Р° РїСЂР°РІРёР» РёРіСЂРѕРєР°Рј')
+            imgui.BulletText(u8'РќР°СЃС‚СЂРѕР№С‚Рµ РїСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ overlay РїРѕРґ СЃРІРѕРё РїСЂРµРґРїРѕС‡С‚РµРЅРёСЏ')
+            imgui.BulletText(u8'Р’СЃРµ С„Р°Р№Р»С‹ РїСЂР°РІРёР» РЅР°С…РѕРґСЏС‚СЃСЏ РІ РїР°РїРєРµ moonloader/OverlayRules/texts/')
+            imgui.BulletText(u8'Р’С‹ РјРѕР¶РµС‚Рµ СЂРµРґР°РєС‚РёСЂРѕРІР°С‚СЊ С‚РµРєСЃС‚С‹ РїСЂР°РІРёР» РІ Р»СЋР±РѕРј С‚РµРєСЃС‚РѕРІРѕРј СЂРµРґР°РєС‚РѕСЂРµ')
+            imgui.BulletText(u8'РћС‚РєР»СЋС‡РёС‚Рµ "РђРІС‚РѕРѕР±РЅРѕРІР»РµРЅРёРµ С‚РµРєСЃС‚РѕРІ" РµСЃР»Рё РёР·РјРµРЅСЏР»Рё С„Р°Р№Р»С‹ РїСЂР°РІРёР»')
             
             imgui.Spacing()
             imgui.Separator()
@@ -2467,10 +2346,10 @@ local function renderInfoWindow()
             if imgui.BeginChild('##warning', imgui.ImVec2(0, 136), true) then
                 imgui.Spacing()
                 imgui.Indent(10)
-                imgui.TextColored(imgui.ImVec4(1.00, 0.70, 0.30, 1.00), u8'ВАЖНО:')
+                imgui.TextColored(imgui.ImVec4(1.00, 0.70, 0.30, 1.00), u8'Р’РђР–РќРћ:')
                 imgui.Spacing()
                 imgui.PushTextWrapPos(imgui.GetWindowWidth() - 20)
-                imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Если вы изменили текстовые файлы правил, обязательно отключите опцию "Автоматически обновлять текстовые файлы" в настройках, иначе ваши изменения будут перезаписаны при следующем запуске скрипта.')
+                imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Р•СЃР»Рё РІС‹ РёР·РјРµРЅРёР»Рё С‚РµРєСЃС‚РѕРІС‹Рµ С„Р°Р№Р»С‹ РїСЂР°РІРёР», РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ РѕС‚РєР»СЋС‡РёС‚Рµ РѕРїС†РёСЋ "РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРё РѕР±РЅРѕРІР»СЏС‚СЊ С‚РµРєСЃС‚РѕРІС‹Рµ С„Р°Р№Р»С‹" РІ РЅР°СЃС‚СЂРѕР№РєР°С…, РёРЅР°С‡Рµ РІР°С€Рё РёР·РјРµРЅРµРЅРёСЏ Р±СѓРґСѓС‚ РїРµСЂРµР·Р°РїРёСЃР°РЅС‹ РїСЂРё СЃР»РµРґСѓСЋС‰РµРј Р·Р°РїСѓСЃРєРµ СЃРєСЂРёРїС‚Р°.')
                 imgui.PopTextWrapPos()
                 imgui.Unindent(10)
                 imgui.Spacing()
@@ -2491,7 +2370,7 @@ local function renderInfoWindow()
         imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.40, 0.35, 0.90, 1.00))
         if title_font then imgui.PushFont(title_font) end
 
-        local button_text = u8'Продолжить'
+        local button_text = u8'РџСЂРѕРґРѕР»Р¶РёС‚СЊ'
         local button_width = imgui.CalcTextSize(button_text).x + 80
         local window_width = imgui.GetWindowWidth()
         imgui.SetCursorPosX((window_width - button_width) * 0.5)
@@ -2516,17 +2395,17 @@ end
 
 local function renderWindow()
     local sw, sh = getScreenResolution()
-    -- Адаптивный размер: максимум 90% от высоты экрана
+    -- РђРґР°РїС‚РёРІРЅС‹Р№ СЂР°Р·РјРµСЂ: РјР°РєСЃРёРјСѓРј 90% РѕС‚ РІС‹СЃРѕС‚С‹ СЌРєСЂР°РЅР°
     local adaptive_height = math.min(orule.config.windowHeight or 800, sh * 0.9)
     local adaptive_width = math.min(orule.config.windowWidth or 820, sw * 0.9)
 
     imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
     imgui.SetNextWindowSize(imgui.ImVec2(adaptive_width, adaptive_height), imgui.Cond.FirstUseEver)
 
-    if imgui.Begin(u8'Менеджер правил', show_window, imgui.WindowFlags.NoCollapse) then
+    if imgui.Begin(u8'РњРµРЅРµРґР¶РµСЂ РїСЂР°РІРёР»', show_window, imgui.WindowFlags.NoCollapse) then
         if not first_render_done then
             first_render_done = true
-            imgui.Text(u8'Загрузка интерфейса...')
+            imgui.Text(u8'Р—Р°РіСЂСѓР·РєР° РёРЅС‚РµСЂС„РµР№СЃР°...')
             imgui.End()
             return
         end
@@ -2534,7 +2413,7 @@ local function renderWindow()
         local current_width = math.floor(current_size.x)
         local current_height = math.floor(current_size.y)
         
-        -- Ограничиваем сохранение размера разумными пределами
+        -- РћРіСЂР°РЅРёС‡РёРІР°РµРј СЃРѕС…СЂР°РЅРµРЅРёРµ СЂР°Р·РјРµСЂР° СЂР°Р·СѓРјРЅС‹РјРё РїСЂРµРґРµР»Р°РјРё
         if current_width >= 600 and current_height >= 400 then
             if (last_window_width ~= current_width or last_window_height ~= current_height) and (last_window_width > 0 or last_window_height > 0) then
                 orule.config.windowWidth = current_width
@@ -2572,14 +2451,14 @@ local function renderWindow()
 
             imgui.Spacing()
 
-            local desc_text = u8'Продвинутый менеджер правил с overlay-интерфейсом'
+            local desc_text = u8'РџСЂРѕРґРІРёРЅСѓС‚С‹Р№ РјРµРЅРµРґР¶РµСЂ РїСЂР°РІРёР» СЃ overlay-РёРЅС‚РµСЂС„РµР№СЃРѕРј'
             local desc_width = imgui.CalcTextSize(desc_text).x
             imgui.SetCursorPosX(20 + (available_width - desc_width) * 0.5)
             imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.95), desc_text)
 
             imgui.Spacing()
 
-            local author_text = u8'Автор: Lev Exelent (vk.com/e11evated)'
+            local author_text = u8'РђРІС‚РѕСЂ: Lev Exelent (vk.com/e11evated)'
             local author_width = imgui.CalcTextSize(author_text).x
             imgui.SetCursorPosX(20 + (available_width - author_width) * 0.5)
             imgui.TextColored(imgui.ImVec4(0.65, 0.65, 0.70, 0.90), author_text)
@@ -2594,7 +2473,7 @@ local function renderWindow()
         imgui.Spacing()
         
         if imgui.BeginTabBar('##main_tabs') then
-            if imgui.BeginTabItem(u8'Правила') then 
+            if imgui.BeginTabItem(u8'РџСЂР°РІРёР»Р°') then 
                 if main_font then imgui.PushFont(main_font) end
                 
                 local content_height = imgui.GetContentRegionAvail().y
@@ -2609,7 +2488,7 @@ local function renderWindow()
                 if main_font then imgui.PopFont() end
                 imgui.EndTabItem() 
             end
-            if imgui.BeginTabItem(u8'Радиальное меню') then
+            if imgui.BeginTabItem(u8'Р Р°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ') then
                 if main_font then imgui.PushFont(main_font) end
                 
                 local content_height = imgui.GetContentRegionAvail().y
@@ -2624,7 +2503,7 @@ local function renderWindow()
                 if main_font then imgui.PopFont() end
                 imgui.EndTabItem()
             end
-            if imgui.BeginTabItem(u8'Настройки') then 
+            if imgui.BeginTabItem(u8'РќР°СЃС‚СЂРѕР№РєРё') then 
                 if main_font then imgui.PushFont(main_font) end
                 
                 local content_height = imgui.GetContentRegionAvail().y
@@ -2646,7 +2525,7 @@ local function renderWindow()
 end
 
 -- ============================================================
--- РАДИАЛЬНОЕ МЕНЮ
+-- Р РђР”РРђР›Р¬РќРћР• РњР•РќР®
 -- ============================================================
 local function renderRadialMenu()
     if not radialMenu.globalEnabled then return end
@@ -2809,7 +2688,7 @@ local function renderRadialMenu()
 
         local midAngle = angleStart + step * 0.5
         local label = enabled_buttons[i].name or ""
-        -- Конвертируем CP1251 ? UTF-8 для ImGui
+        -- РљРѕРЅРІРµСЂС‚РёСЂСѓРµРј CP1251 ? UTF-8 РґР»СЏ ImGui
         local label_u8 = u8(label)
         local textSize = imgui.CalcTextSize(label_u8)
         local textRadius = (innerRadius + outerRadius) * 0.5
@@ -2850,7 +2729,7 @@ end, function()
 end)
 
 -- ============================================================
--- ОБРАБОТКА НАЖАТИЙ
+-- РћР‘Р РђР‘РћРўРљРђ РќРђР–РђРўРР™
 -- ============================================================
 function onWindowMessage(msg, wparam, lparam)
     if (msg == wm.WM_KEYDOWN or msg == wm.WM_SYSKEYDOWN) then
@@ -2889,18 +2768,18 @@ function onWindowMessage(msg, wparam, lparam)
                 is_capturing_keys = false
                 consumeWindowMessage(true, true)
             elseif code ~= 0x10 and code ~= 0x11 and code ~= 0x12 then
-                -- Собираем комбинацию: модификаторы + нажатая клавиша
+                -- РЎРѕР±РёСЂР°РµРј РєРѕРјР±РёРЅР°С†РёСЋ: РјРѕРґРёС„РёРєР°С‚РѕСЂС‹ + РЅР°Р¶Р°С‚Р°СЏ РєР»Р°РІРёС€Р°
                 local shortcut_keys = {}
 
-                -- Добавляем зажатые модификаторы
+                -- Р”РѕР±Р°РІР»СЏРµРј Р·Р°Р¶Р°С‚С‹Рµ РјРѕРґРёС„РёРєР°С‚РѕСЂС‹
                 if isKeyDown(0xA2) or isKeyDown(0xA3) or isKeyDown(0x11) then table.insert(shortcut_keys, 0xA2) end -- LCTRL
                 if isKeyDown(0xA4) or isKeyDown(0xA5) or isKeyDown(0x12) then table.insert(shortcut_keys, 0xA4) end -- LALT
                 if isKeyDown(0xA0) or isKeyDown(0xA1) or isKeyDown(0x10) then table.insert(shortcut_keys, 0xA0) end -- LSHIFT
 
-                -- Добавляем нажатую клавишу
+                -- Р”РѕР±Р°РІР»СЏРµРј РЅР°Р¶Р°С‚СѓСЋ РєР»Р°РІРёС€Сѓ
                 table.insert(shortcut_keys, code)
 
-                -- Ограничиваем максимальное количество клавиш в комбинации
+                -- РћРіСЂР°РЅРёС‡РёРІР°РµРј РјР°РєСЃРёРјР°Р»СЊРЅРѕРµ РєРѕР»РёС‡РµСЃС‚РІРѕ РєР»Р°РІРёС€ РІ РєРѕРјР±РёРЅР°С†РёРё
                 if #shortcut_keys >= 1 and #shortcut_keys <= 3 then
                     local exclude_index = nil
                     if key_capture_type == "rule" and key_capture_mode and key_capture_mode.index then
@@ -2912,7 +2791,7 @@ function onWindowMessage(msg, wparam, lparam)
                         local shortcut_name = getShortcutName(shortcut_keys)
 
                         if isSampLoaded() and isSampAvailable() then
-                            sampAddChatMessage(string.format('[ORULE] Комбинация "%s" уже использована %s', shortcut_name, reason), 0xFF0000)
+                            sampAddChatMessage(string.format('[ORULE] РљРѕРјР±РёРЅР°С†РёСЏ "%s" СѓР¶Рµ РёСЃРїРѕР»СЊР·РѕРІР°РЅР° %s', shortcut_name, reason), 0xFF0000)
                         end
 
                         key_capture_mode, key_capture_type = nil, nil
@@ -2932,7 +2811,7 @@ function onWindowMessage(msg, wparam, lparam)
                     end
                 elseif #shortcut_keys > 3 then
                     if isSampLoaded() and isSampAvailable() then
-                        sampAddChatMessage('[ORULE] Слишком много клавиш в комбинации (макс. 3)', 0xFF0000)
+                        sampAddChatMessage('[ORULE] РЎР»РёС€РєРѕРј РјРЅРѕРіРѕ РєР»Р°РІРёС€ РІ РєРѕРјР±РёРЅР°С†РёРё (РјР°РєСЃ. 3)', 0xFF0000)
                     end
                     key_capture_mode, key_capture_type = nil, nil
                     is_capturing_keys = false
@@ -2970,7 +2849,7 @@ function onWindowMessage(msg, wparam, lparam)
                 local key_name = getKeyName(code)
                 
                 if isSampLoaded() and isSampAvailable() then
-                    sampAddChatMessage(string.format('[ORULE] Клавиша "%s" уже использована %s', key_name, reason), 0xFF0000)
+                    sampAddChatMessage(string.format('[ORULE] РљР»Р°РІРёС€Р° "%s" СѓР¶Рµ РёСЃРїРѕР»СЊР·РѕРІР°РЅР° %s', key_name, reason), 0xFF0000)
                 end
                 
                 key_capture_mode, key_capture_type = nil, nil
@@ -2991,9 +2870,9 @@ function onWindowMessage(msg, wparam, lparam)
 
     if not key_capture_mode and radialMenu.globalEnabled then
         if msg == wm.WM_MBUTTONDOWN then
-            -- Проверяем блокировки ПЕРЕД активацией
+            -- РџСЂРѕРІРµСЂСЏРµРј Р±Р»РѕРєРёСЂРѕРІРєРё РџР•Р Р•Р” Р°РєС‚РёРІР°С†РёРµР№
             if sampIsChatInputActive() or sampIsDialogActive() or isSampfuncsConsoleActive() or isPauseMenuActive() then
-                return -- НЕ активируем меню
+                return -- РќР• Р°РєС‚РёРІРёСЂСѓРµРј РјРµРЅСЋ
             end
             
             radialMenu.pendingActivation = true
@@ -3015,14 +2894,14 @@ function onWindowMessage(msg, wparam, lparam)
 end
 
 -- ============================================================
--- ГЛАВНАЯ ЛОГИКА
+-- Р“Р›РђР’РќРђРЇ Р›РћР“РРљРђ
 -- ============================================================
 local function cmd_help()
     sampAddChatMessage("======================", 0x45AFFF)
-    sampAddChatMessage("Orule - Менеджер правил v1.2", 0x45AFFF)
-    sampAddChatMessage("/" .. orule.config.command .. " - открыть меню", 0xFFFFFF)
-    sampAddChatMessage("Средняя кнопка мыши (удержание) - радиальное меню", 0xFFFFFF)
-    sampAddChatMessage("Автор: Lev Exelent", 0xFFFFFF)
+    sampAddChatMessage("Orule - РњРµРЅРµРґР¶РµСЂ РїСЂР°РІРёР» v1.2", 0x45AFFF)
+    sampAddChatMessage("/" .. orule.config.command .. " - РѕС‚РєСЂС‹С‚СЊ РјРµРЅСЋ", 0xFFFFFF)
+    sampAddChatMessage("РЎСЂРµРґРЅСЏСЏ РєРЅРѕРїРєР° РјС‹С€Рё (СѓРґРµСЂР¶Р°РЅРёРµ) - СЂР°РґРёР°Р»СЊРЅРѕРµ РјРµРЅСЋ", 0xFFFFFF)
+    sampAddChatMessage("РђРІС‚РѕСЂ: Lev Exelent", 0xFFFFFF)
     sampAddChatMessage("======================", 0x45AFFF)
 end
 
@@ -3039,10 +2918,10 @@ end
 local function checkMoonLoaderVersion()
     local ml_version = getMoonloaderVersion()
     if ml_version < 026 then
-        print('[ORULE] Ошибка: требуется MoonLoader 0.26+')
-        print('[ORULE] Текущая версия: ' .. string.format('0.%d', ml_version))
+        print('[ORULE] РћС€РёР±РєР°: С‚СЂРµР±СѓРµС‚СЃСЏ MoonLoader 0.26+')
+        print('[ORULE] РўРµРєСѓС‰Р°СЏ РІРµСЂСЃРёСЏ: ' .. string.format('0.%d', ml_version))
         if isSampLoaded() and isSampAvailable() then
-            sampAddChatMessage('[ORULE] Ошибка: требуется MoonLoader 0.26+', 0xFF0000)
+            sampAddChatMessage('[ORULE] РћС€РёР±РєР°: С‚СЂРµР±СѓРµС‚СЃСЏ MoonLoader 0.26+', 0xFF0000)
         end
         thisScript():unload()
     end
@@ -3050,19 +2929,23 @@ end
 
 function safeMain()
     if not isSampLoaded() then 
-        print('[ORULE] Ошибка: SA-MP не загружен')
+        print('[ORULE] РћС€РёР±РєР°: SA-MP РЅРµ Р·Р°РіСЂСѓР¶РµРЅ')
         return 
     end
     while not isSampAvailable() do wait(100) end
 
+    local lastver = update():getLastVersion()
+    sampAddChatMessage('РЎРєСЂРёРїС‚ Р·Р°РіСЂСѓР¶РµРЅ, РІРµСЂСЃРёСЏ: '..lastver, -1)
+    if thisScript().version ~= lastver then
+        sampRegisterChatCommand('scriptupd', function()
+            update():download()
+        end)
+        sampAddChatMessage('Р’С‹С€Р»Рѕ РѕР±РЅРѕРІР»РµРЅРёРµ СЃРєСЂРёРїС‚Р° ('..thisScript().version..' -> '..lastver..'), РІРІРµРґРёС‚Рµ /scriptupd РґР»СЏ РѕР±РЅРѕРІР»РµРЅРёСЏ!', -1)
+    end
+
     checkMoonLoaderVersion()
 
-    -- Проверка обновлений
-    if autoupdate_loaded and enable_autoupdate and Update then
-        pcall(Update.check, Update.json_url, Update.prefix, Update.url)
-    end
-    
-    sampAddChatMessage("[ORULE] Загрузка...", 0x45AFFF)
+    sampAddChatMessage("[ORULE] Р—Р°РіСЂСѓР·РєР°...", 0x45AFFF)
     
     loadAllRules()
     
@@ -3071,7 +2954,7 @@ function safeMain()
         sampRegisterChatCommand(orule.config.command .. "_help", cmd_help)
     end
     
-    sampAddChatMessage("[ORULE] Готов! Используйте /" .. orule.config.command, 0x00FF00)
+    sampAddChatMessage("[ORULE] Р“РѕС‚РѕРІ! РСЃРїРѕР»СЊР·СѓР№С‚Рµ /" .. orule.config.command, 0x00FF00)
     
     lua_thread.create(function()
         wait(2000)
@@ -3098,7 +2981,7 @@ function safeMain()
     local held_rule_active = false
 
     -- ============================================================
-    -- АВТОЗАГРУЗКА РЕСУРСОВ С GITHUB
+    -- РђР’РўРћР—РђР“Р РЈР—РљРђ Р Р•РЎРЈР РЎРћР’ РЎ GITHUB
     -- ============================================================
     function downloadResource(url, path, resource_type, callback)
         local dir = path:match('(.+)\\[^\\]+$')
@@ -3106,10 +2989,10 @@ function safeMain()
             createDirectory(dir)
         end
         
-        -- Логика для текстовых файлов
+        -- Р›РѕРіРёРєР° РґР»СЏ С‚РµРєСЃС‚РѕРІС‹С… С„Р°Р№Р»РѕРІ
         if resource_type == "text" then
             if orule.config.autoUpdateTexts then
-                print('[ORULE] Обновляю текст: ' .. path:match('([^\\]+)$'))
+                print('[ORULE] РћР±РЅРѕРІР»СЏСЋ С‚РµРєСЃС‚: ' .. path:match('([^\\]+)$'))
                 downloadUrlToFile(url, path, function(id, status)
                     if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
                         if callback then callback(true) end
@@ -3118,7 +3001,7 @@ function safeMain()
                 return true
             else
                 if not doesFileExist(path) then
-                    print('[ORULE] Создаю текст: ' .. path:match('([^\\]+)$'))
+                    print('[ORULE] РЎРѕР·РґР°СЋ С‚РµРєСЃС‚: ' .. path:match('([^\\]+)$'))
                     downloadUrlToFile(url, path, function(id, status)
                         if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
                             if callback then callback(true) end
@@ -3126,16 +3009,16 @@ function safeMain()
                     end)
                     return true
                 else
-                    print('[ORULE] Пропускаю: ' .. path:match('([^\\]+)$'))
+                    print('[ORULE] РџСЂРѕРїСѓСЃРєР°СЋ: ' .. path:match('([^\\]+)$'))
                     if callback then callback(false) end
                     return false
                 end
             end
         end
         
-        -- Для шрифтов и картинок
+        -- Р”Р»СЏ С€СЂРёС„С‚РѕРІ Рё РєР°СЂС‚РёРЅРѕРє
         if not doesFileExist(path) then
-            print('[ORULE] Загружаю: ' .. path:match('([^\\]+)$'))
+            print('[ORULE] Р—Р°РіСЂСѓР¶Р°СЋ: ' .. path:match('([^\\]+)$'))
             downloadUrlToFile(url, path, function(id, status)
                 if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
                     if callback then callback(true) end
@@ -3155,7 +3038,7 @@ function safeMain()
         local processed_count = 0
         
         local resources = {
-            -- === ТЕКСТОВЫЕ ФАЙЛЫ ===
+            -- === РўР•РљРЎРўРћР’Р«Р• Р¤РђР™Р›Р« ===
             {url = base_url .. "texts/hierarchy.txt", path = base_path .. "texts\\hierarchy.txt", type = "text"},
             {url = base_url .. "texts/labor_code.txt", path = base_path .. "texts\\labor_code.txt", type = "text"},
             {url = base_url .. "texts/legal_constitution.txt", path = base_path .. "texts\\legal_constitution.txt", type = "text"},
@@ -3184,7 +3067,7 @@ function safeMain()
             {url = base_url .. "texts/territory_smi.txt", path = base_path .. "texts\\territory_smi.txt", type = "text"},
             {url = base_url .. "texts/upk.txt", path = base_path .. "texts\\upk.txt", type = "text"},
             
-            -- === ИЗОБРАЖЕНИЯ ===
+            -- === РР—РћР‘Р РђР–Р•РќРРЇ ===
             {url = base_url .. "images/radar_map.png", path = base_path .. "images\\radar_map.png", type = "image"},
             {url = base_url .. "images/ter_1.jpg", path = base_path .. "images\\ter_1.jpg", type = "image"},
             {url = base_url .. "images/ter_2.jpg", path = base_path .. "images\\ter_2.jpg", type = "image"},
@@ -3207,14 +3090,14 @@ function safeMain()
             {url = base_url .. "images/ter_19.jpg", path = base_path .. "images\\ter_19.jpg", type = "image"},
             {url = base_url .. "images/ter_20.jpg", path = base_path .. "images\\ter_20.jpg", type = "image"},
             
-            -- === ШРИФТ ===
+            -- === РЁР РР¤Рў ===
             {url = base_url .. "fonts/EagleSans-Regular.ttf", path = base_path .. "fonts\\EagleSans-Regular.ttf", type = "font"},
         }
         
         local total = #resources
-        sampAddChatMessage('[ORULE] Проверка ресурсов... (' .. total .. ' файлов)', 0xFFFFFF)
+        sampAddChatMessage('[ORULE] РџСЂРѕРІРµСЂРєР° СЂРµСЃСѓСЂСЃРѕРІ... (' .. total .. ' С„Р°Р№Р»РѕРІ)', 0xFFFFFF)
         
-        -- Асинхронная загрузка
+        -- РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ Р·Р°РіСЂСѓР·РєР°
         for i, res in ipairs(resources) do
             downloadResource(res.url, res.path, res.type, function(was_downloaded)
                 processed_count = processed_count + 1
@@ -3222,28 +3105,28 @@ function safeMain()
                     downloaded_count = downloaded_count + 1
                 end
                 
-                -- Показываем прогресс
+                -- РџРѕРєР°Р·С‹РІР°РµРј РїСЂРѕРіСЂРµСЃСЃ
                 if processed_count % 10 == 0 or processed_count == total then
-                    sampAddChatMessage('[ORULE] Проверено: ' .. processed_count .. '/' .. total, 0xFFFFFF)
+                    sampAddChatMessage('[ORULE] РџСЂРѕРІРµСЂРµРЅРѕ: ' .. processed_count .. '/' .. total, 0xFFFFFF)
                 end
                 
-                -- Финальное сообщение
+                -- Р¤РёРЅР°Р»СЊРЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ
                 if processed_count == total then
                     if downloaded_count > 0 then
-                        sampAddChatMessage('[ORULE] Загружено новых ресурсов: ' .. downloaded_count, 0x00FF00)
+                        sampAddChatMessage('[ORULE] Р—Р°РіСЂСѓР¶РµРЅРѕ РЅРѕРІС‹С… СЂРµСЃСѓСЂСЃРѕРІ: ' .. downloaded_count, 0x00FF00)
                     else
-                        sampAddChatMessage('[ORULE] Все ресурсы актуальны', 0x00FF00)
+                        sampAddChatMessage('[ORULE] Р’СЃРµ СЂРµСЃСѓСЂСЃС‹ Р°РєС‚СѓР°Р»СЊРЅС‹', 0x00FF00)
                     end
                 end
             end)
             
-            wait(100) -- Задержка между запросами
+            wait(100) -- Р—Р°РґРµСЂР¶РєР° РјРµР¶РґСѓ Р·Р°РїСЂРѕСЃР°РјРё
         end
     end
 
-    -- Запускаем проверку ресурсов
+    -- Р—Р°РїСѓСЃРєР°РµРј РїСЂРѕРІРµСЂРєСѓ СЂРµСЃСѓСЂСЃРѕРІ
     lua_thread.create(function()
-        wait(2000) -- Ждём инициализацию MoonLoader
+        wait(2000) -- Р–РґС‘Рј РёРЅРёС†РёР°Р»РёР·Р°С†РёСЋ MoonLoader
         checkAndDownloadResources()
     end)
 
@@ -3252,7 +3135,7 @@ function safeMain()
         local is_game_focused = not (sampIsChatInputActive() or sampIsDialogActive() or isSampfuncsConsoleActive() or isPauseMenuActive())
         
         if is_game_focused and not is_capturing_keys then
-            -- Проверка глобальной горячей клавиши (теперь поддерживает комбинации)
+            -- РџСЂРѕРІРµСЂРєР° РіР»РѕР±Р°Р»СЊРЅРѕР№ РіРѕСЂСЏС‡РµР№ РєР»Р°РІРёС€Рё (С‚РµРїРµСЂСЊ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ РєРѕРјР±РёРЅР°С†РёРё)
             if ((type(orule.config.globalHotkey) == "table" and isShortcutPressed(orule.config.globalHotkey)) or
                 (type(orule.config.globalHotkey) ~= "table" and orule.config.globalHotkey > 0 and isKeyJustPressed(orule.config.globalHotkey))) then
                 toggle()
@@ -3262,7 +3145,7 @@ function safeMain()
             for i, rule in ipairs(orule.rulesDB) do
                 if rule.key and ((type(rule.key) == "table" and #rule.key > 0) or (type(rule.key) ~= "table" and rule.key > 0)) then
                     if rule.holdMode then
-                        -- Для режима удержания проверяем все клавиши комбинации
+                        -- Р”Р»СЏ СЂРµР¶РёРјР° СѓРґРµСЂР¶Р°РЅРёСЏ РїСЂРѕРІРµСЂСЏРµРј РІСЃРµ РєР»Р°РІРёС€Рё РєРѕРјР±РёРЅР°С†РёРё
                         local all_pressed = true
                         if type(rule.key) == "table" then
                             for _, key in ipairs(rule.key) do
@@ -3284,7 +3167,7 @@ function safeMain()
                             break
                         end
                     else
-                        -- Для обычного режима проверяем комбинацию
+                        -- Р”Р»СЏ РѕР±С‹С‡РЅРѕРіРѕ СЂРµР¶РёРјР° РїСЂРѕРІРµСЂСЏРµРј РєРѕРјР±РёРЅР°С†РёСЋ
                         if (type(rule.key) == "table" and isShortcutPressed(rule.key)) or
                            (type(rule.key) ~= "table" and isKeyJustPressed(rule.key)) then
                             if overlay_visible and overlay_rule_index == i then
@@ -3315,6 +3198,6 @@ function main()
     local success, error_msg = pcall(safeMain)
     if not success then
         logError('CRITICAL ERROR: ' .. tostring(error_msg))
-        sampAddChatMessage('[ORULE] Критическая ошибка! Проверьте orule_errors.log', 0xFF0000)
+        sampAddChatMessage('[ORULE] РљСЂРёС‚РёС‡РµСЃРєР°СЏ РѕС€РёР±РєР°! РџСЂРѕРІРµСЂСЊС‚Рµ orule_errors.log', 0xFF0000)
     end
 end
