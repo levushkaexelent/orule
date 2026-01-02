@@ -1,6 +1,6 @@
 script_name('Orule - Менеджер правил')
 script_author('Lev Exelent (vk.com/e11evated)')
-script_version('1.1')
+script_version('1.2')
 
 require('lib.moonloader')
 local imgui = require('mimgui')
@@ -14,12 +14,47 @@ encoding.default = 'CP1251'
 local u8 = encoding.UTF8
 
 -- ============================================================
+-- МОДУЛЬ ДАННЫХ
+-- ============================================================
+local orule = {
+    -- Система логирования
+    LOG_FILE = getWorkingDirectory() .. '\\OverlayRules\\orule_errors.log',
+
+    -- Пути к файлам
+    SCRIPT_DIR = getWorkingDirectory() .. '\\OverlayRules',
+    CONFIG_FILE = nil, -- будет инициализировано позже
+    FONTS_DIR = nil,
+    IMAGES_DIR = nil,
+    TEXTS_DIR = nil,
+
+    -- Переменные
+    rulesDB = {},
+    text_cache = {},
+    config = {
+        command = "orule",
+        globalHotkey = 0,
+        overlayBgAlpha = 0.85,
+        fontSize = 18.0,
+        lineSpacing = 0.1,
+        windowWidth = 820,
+        windowHeight = 800,
+        ruleCardHeight = 183,
+        firstLaunch = true,
+        autoUpdateTexts = true
+    }
+}
+
+-- Инициализация путей
+orule.CONFIG_FILE = orule.SCRIPT_DIR .. '\\config.txt'
+orule.FONTS_DIR = orule.SCRIPT_DIR .. '\\fonts'
+orule.IMAGES_DIR = orule.SCRIPT_DIR .. '\\images'
+orule.TEXTS_DIR = orule.SCRIPT_DIR .. '\\texts'
+
+-- ============================================================
 -- СИСТЕМА ЛОГИРОВАНИЯ
 -- ============================================================
-local LOG_FILE = getWorkingDirectory() .. '\\OverlayRules\\orule_errors.log'
-
 local function logError(message)
-    local file = io.open(LOG_FILE, 'a')
+    local file = io.open(orule.LOG_FILE, 'a')
     if file then
         local timestamp = os.date('%Y-%m-%d %H:%M:%S')
         file:write(string.format('[%s] %s\n', timestamp, message))
@@ -30,7 +65,7 @@ end
 -- ============================================================
 -- СИСТЕМА АВТООБНОВЛЕНИЯ
 -- ============================================================
-local SCRIPT_VERSION = "1.1"
+local SCRIPT_VERSION = "1.2"
 local enable_autoupdate = true
 local autoupdate_loaded = false
 local Update = nil
@@ -93,7 +128,7 @@ if enable_autoupdate then
                                     
                                     if updateversion ~= thisScript().version then
                                         lua_thread.create(function()
-                                            sampAddChatMessage(prefix..'Обнаружено обновление '..thisScript().version..' → '..updateversion, -1)
+                                            sampAddChatMessage(prefix..'Обнаружено обновление '..thisScript().version..' ? '..updateversion, -1)
                                             wait(500)
                                             
                                             -- Создаем резервную копию
@@ -185,18 +220,31 @@ end
 -- ============================================================
 -- ПОДДЕРЖКА CP1251
 -- ============================================================
-local function utf8_lower(str)
-    local cp1251_upper = "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
-    local cp1251_lower = "абвгдежзийклмнопрстуфхцчшщъыьэюя"
-    
-    local result = str
-    for i = 1, #cp1251_upper do
-        local upper_char = cp1251_upper:sub(i, i)
-        local lower_char = cp1251_lower:sub(i, i)
-        result = result:gsub(upper_char, lower_char)
+-- Расширение string.lower() для корректной работы с кириллицей CP1251
+do
+    local cp1251_map = {}
+    -- Заполняем маппинг для символов кириллицы (коды 192-223 в CP1251)
+    for i = 192, 223 do
+        cp1251_map[string.char(i)] = string.char(i + 32)
     end
-    
-    return result:lower()
+
+    local original_lower = string.lower
+    function string.lower(str)
+        if type(str) ~= "string" then return original_lower(str) end
+
+        -- Применяем маппинг для кириллицы
+        local result = str:gsub("[\192-\223]", function(c)
+            return cp1251_map[c] or c
+        end)
+
+        -- Используем стандартный lower для остальных символов
+        return original_lower(result)
+    end
+end
+
+-- Функция utf8_lower теперь просто обертка для совместимости
+local function utf8_lower(str)
+    return string.lower(str)
 end
 
 -- ============================================================
@@ -216,32 +264,8 @@ local search_synonyms = {
 }
 
 -- ============================================================
--- ПУТИ К ФАЙЛАМ
+-- ДОПОЛНИТЕЛЬНЫЕ ПЕРЕМЕННЫЕ
 -- ============================================================
-local SCRIPT_DIR = getWorkingDirectory() .. '\\OverlayRules'
-local CONFIG_FILE = SCRIPT_DIR .. '\\config.txt'
-local FONTS_DIR = SCRIPT_DIR .. '\\fonts'
-local IMAGES_DIR = SCRIPT_DIR .. '\\images'
-local TEXTS_DIR = SCRIPT_DIR .. '\\texts'
-
--- ============================================================
--- ПЕРЕМЕННЫЕ
--- ============================================================
-local rulesDB = {}
-local text_cache = {}
-
-local config = {
-    command = "orule",
-    globalHotkey = 0,
-    overlayBgAlpha = 0.85,
-    fontSize = 18.0,
-    lineSpacing = 0.1,
-    windowWidth = 820,
-    windowHeight = 1200,
-    ruleCardHeight = 183,
-    firstLaunch = true,
-    autoUpdateTexts = true
-}
 
 local show_window = imgui.new.bool(false)
 local show_info_window = imgui.new.bool(false)
@@ -258,6 +282,7 @@ local first_render_done = false
 local preload_complete = false
 local key_capture_mode = nil
 local key_capture_type = nil
+local is_capturing_keys = false
 local texture_cache = {}
 
 local radialMenu = {
@@ -349,22 +374,20 @@ local function executeRadialAction(index)
             wait(1500)
             sampSendChat('/me надел резиновые перчатки, прохлопал по торсу, рукавам и ногам')
             wait(1500)
-            lua_thread.create(function()
-                if not (isSampLoaded() and isSampAvailable()) then return end
-                if not sampIsChatInputActive() and not sampIsDialogActive() and not isSampfuncsConsoleActive() then
-                    sampSetChatInputEnabled(true)
-                end
+            -- Вставка команды /frisk в чат (без вложенного потока для безопасности)
+            if not sampIsChatInputActive() and not sampIsDialogActive() and not isSampfuncsConsoleActive() then
+                sampSetChatInputEnabled(true)
                 wait(50)
                 local old_buf = getClipboardText()
                 setClipboardText('/frisk ')
-                setVirtualKeyDown(17, true)
-                setVirtualKeyDown(86, true)
+                setVirtualKeyDown(17, true) -- Ctrl
+                setVirtualKeyDown(86, true) -- V
                 wait(10)
                 setVirtualKeyDown(86, false)
                 setVirtualKeyDown(17, false)
                 wait(10)
                 setClipboardText(old_buf)
-            end)
+            end
         end)
     elseif index == 4 then
         lua_thread.create(function()
@@ -373,22 +396,20 @@ local function executeRadialAction(index)
             wait(1000)
             sampSendChat('/me раскрыв удостоверение, предъявил его человеку напротив на уровне глаз не передавая в руки')
             wait(1000)
-            lua_thread.create(function()
-                if not (isSampLoaded() and isSampAvailable()) then return end
-                if not sampIsChatInputActive() and not sampIsDialogActive() and not isSampfuncsConsoleActive() then
-                    sampSetChatInputEnabled(true)
-                end
+            -- Вставка команды /doc в чат (без вложенного потока для безопасности)
+            if not sampIsChatInputActive() and not sampIsDialogActive() and not isSampfuncsConsoleActive() then
+                sampSetChatInputEnabled(true)
                 wait(50)
                 local old_buf = getClipboardText()
                 setClipboardText('/doc ')
-                setVirtualKeyDown(17, true)
-                setVirtualKeyDown(86, true)
+                setVirtualKeyDown(17, true) -- Ctrl
+                setVirtualKeyDown(86, true) -- V
                 wait(10)
                 setVirtualKeyDown(86, false)
                 setVirtualKeyDown(17, false)
                 wait(10)
                 setClipboardText(old_buf)
-            end)
+            end
         end)
     elseif index == 5 then
         lua_thread.create(function()
@@ -448,9 +469,35 @@ local VK_NAMES = {
     [0xC0] = "`", [0xDB] = "[", [0xDC] = "\\", [0xDD] = "]", [0xDE] = "'"
 }
 
+local function getShortcutName(shortcut_keys)
+    if type(shortcut_keys) ~= "table" or #shortcut_keys == 0 then
+        return "Не назначено"
+    end
+
+    local names = {}
+    for _, vk_code in ipairs(shortcut_keys) do
+        if vk_code and vk_code ~= 0 then
+            local name = VK_NAMES[vk_code] or ("VK:"..tostring(vk_code))
+            table.insert(names, name)
+        end
+    end
+
+    if #names == 0 then
+        return "Не назначено"
+    end
+
+    return table.concat(names, " + ")
+end
+
+-- Обратная совместимость
 local function getKeyName(vk_code)
-    if vk_code == 0 or not vk_code then return "Клавиша не зарегистрирована" end
-    return VK_NAMES[vk_code] or ("VK:"..tostring(vk_code))
+    if type(vk_code) == "table" then
+        return getShortcutName(vk_code)
+    elseif vk_code == 0 or not vk_code then
+        return "Не назначено"
+    else
+        return VK_NAMES[vk_code] or ("VK:"..tostring(vk_code))
+    end
 end
 
 local SAMP_RESERVED_KEYS = {
@@ -465,27 +512,81 @@ local SAMP_RESERVED_KEYS = {
     [0x54] = "T (Чат)",
 }
 
-local function isKeyAlreadyUsed(vk_code, exclude_rule_index)
-    if vk_code == 0 or not vk_code then return false end
-    
-    -- Проверка на SAMP клавиши
-    if SAMP_RESERVED_KEYS[vk_code] then
-        return true, "зарезервирована SAMP: " .. SAMP_RESERVED_KEYS[vk_code]
-    end
-    
-    -- Проверка на глобальную клавишу
-    if config.globalHotkey == vk_code then 
-        return true, "глобальной горячей клавишей" 
-    end
-    
-    -- Проверка на клавиши правил
-    for i, rule in ipairs(rulesDB) do
-        if i ~= exclude_rule_index and rule.key == vk_code then 
-            return true, 'правилом "' .. rule.name .. '"' 
+-- Функция проверки комбинации клавиш
+local function isShortcutPressed(shortcut_keys)
+    if type(shortcut_keys) ~= "table" or #shortcut_keys == 0 then return false end
+
+    -- Проверяем, что все клавиши, кроме последней, зажаты
+    for i = 1, #shortcut_keys - 1 do
+        if not isKeyDown(shortcut_keys[i]) then
+            return false
         end
     end
-    
+
+    -- Последняя клавиша должна быть только что нажата
+    return isKeyJustPressed(shortcut_keys[#shortcut_keys])
+end
+
+-- Функция проверки конфликтов комбинаций клавиш
+local function isShortcutAlreadyUsed(shortcut_keys, exclude_rule_index)
+    if type(shortcut_keys) ~= "table" or #shortcut_keys == 0 then return false end
+
+    -- Проверка на SAMP клавиши
+    for _, vk_code in ipairs(shortcut_keys) do
+        if SAMP_RESERVED_KEYS[vk_code] then
+            return true, "содержит зарезервированную SAMP клавишу: " .. SAMP_RESERVED_KEYS[vk_code]
+        end
+    end
+
+    -- Проверка на глобальную клавишу
+    if type(orule.config.globalHotkey) == "table" then
+        if #shortcut_keys == #orule.config.globalHotkey then
+            local match = true
+            for i, key in ipairs(shortcut_keys) do
+                if key ~= orule.config.globalHotkey[i] then
+                    match = false
+                    break
+                end
+            end
+            if match then
+                return true, "глобальной горячей клавишей"
+            end
+        end
+    elseif orule.config.globalHotkey ~= 0 and #shortcut_keys == 1 and shortcut_keys[1] == orule.config.globalHotkey then
+        return true, "глобальной горячей клавишей"
+    end
+
+    -- Проверка на клавиши правил
+    for i, rule in ipairs(orule.rulesDB) do
+        if i ~= exclude_rule_index and type(rule.key) == "table" and #rule.key > 0 then
+            if #shortcut_keys == #rule.key then
+                local match = true
+                for j, key in ipairs(shortcut_keys) do
+                    if key ~= rule.key[j] then
+                        match = false
+                        break
+                    end
+                end
+                if match then
+                    return true, 'правилом "' .. rule.name .. '"'
+                end
+            end
+        elseif i ~= exclude_rule_index and type(rule.key) ~= "table" and rule.key ~= 0 and #shortcut_keys == 1 and shortcut_keys[1] == rule.key then
+            return true, 'правилом "' .. rule.name .. '"'
+        end
+    end
+
     return false
+end
+
+local function isKeyAlreadyUsed(vk_code, exclude_rule_index)
+    if type(vk_code) == "table" then
+        return isShortcutAlreadyUsed(vk_code, exclude_rule_index)
+    elseif vk_code == 0 or not vk_code then
+        return false
+    else
+        return isShortcutAlreadyUsed({vk_code}, exclude_rule_index)
+    end
 end
 
 -- ============================================================
@@ -503,13 +604,22 @@ local function getColorFromHex(hex)
 end
 
 local function renderFormattedText(text)
+    -- #region agent log
+    local file = io.open("c:\\Games\\CyberRussia\\gtacr\\moonloader\\.cursor\\debug.log", "a")
+    if file then
+        local timestamp = os.time()
+        file:write(string.format('{"id":"log_%d","timestamp":%d,"location":"renderFormattedText","message":"renderFormattedText called","data":{"text_length":%d},"sessionId":"debug-session","runId":"perf-test","hypothesisId":"PERF_001"}\n', timestamp, timestamp*1000, #text))
+        file:close()
+    end
+    -- #endregion
+
     local default_color_vec = imgui.ImVec4(1.0, 1.0, 1.0, 1.0)
     local line_height = imgui.GetTextLineHeight()
     local space_width = imgui.CalcTextSize(' ').x
     local window_pos = imgui.GetCursorScreenPos()
     local line_width = imgui.GetWindowContentRegionMax().x - imgui.GetStyle().WindowPadding.x
     local current_pos = imgui.ImVec2(window_pos.x, window_pos.y)
-    local line_spacing = (config.lineSpacing or 0.1) * line_height
+    local line_spacing = (orule.config.lineSpacing or 0.1) * line_height
 
     local lines = {}
     for line in text:gmatch("[^\r\n]*") do table.insert(lines, line) end
@@ -566,34 +676,56 @@ local function renderFormattedText(text)
         ::continue::
     end
     imgui.SetCursorScreenPos(imgui.ImVec2(window_pos.x, current_pos.y))
+
+    -- #region agent log
+    local file2 = io.open("c:\\Games\\CyberRussia\\gtacr\\moonloader\\.cursor\\debug.log", "a")
+    if file2 then
+        local timestamp2 = os.time()
+        file2:write(string.format('{"id":"log_%d","timestamp":%d,"location":"renderFormattedText","message":"renderFormattedText completed","data":{"lines_processed":%d},"sessionId":"debug-session","runId":"perf-test","hypothesisId":"PERF_001"}\n', timestamp2, timestamp2*1000, #lines))
+        file2:close()
+    end
+    -- #endregion
 end
 
 -- ============================================================
 -- КОНФИГУРАЦИЯ
 -- ============================================================
 local function saveConfig()
-    local file = io.open(CONFIG_FILE, "w")
-    if not file then return end
+    local file = io.open(orule.CONFIG_FILE, "w")
+    if not file then
+        local error_msg = "[ORULE] Ошибка: Не удалось открыть файл настроек для записи!"
+        sampAddChatMessage(error_msg, 0xFF0000)
+        logError("saveConfig: Failed to open config file for writing: " .. orule.CONFIG_FILE)
+        return
+    end
     
     file:write("config_version:1\n")
-    file:write("command:" .. (config.command or "orule") .. "\n")
-    file:write("globalHotkey:" .. tostring(config.globalHotkey or 0) .. "\n")
-    file:write("overlayBgAlpha:" .. tostring(config.overlayBgAlpha or 0.85) .. "\n")
-    file:write("fontSize:" .. tostring(config.fontSize or 18.0) .. "\n")
-    file:write("lineSpacing:" .. tostring(config.lineSpacing or 0.1) .. "\n")
-    file:write("windowWidth:" .. tostring(config.windowWidth or 820) .. "\n")
-    file:write("windowHeight:" .. tostring(config.windowHeight or 1200) .. "\n")
-    file:write("ruleCardHeight:" .. tostring(config.ruleCardHeight or 183) .. "\n")
-    file:write("firstLaunch:" .. tostring(config.firstLaunch and "1" or "0") .. "\n")
+    file:write("command:" .. (orule.config.command or "orule") .. "\n")
+    if type(orule.config.globalHotkey) == "table" then
+        file:write("globalHotkey:" .. table.concat(orule.config.globalHotkey, ",") .. "\n")
+    else
+        file:write("globalHotkey:" .. tostring(orule.config.globalHotkey or 0) .. "\n")
+    end
+    file:write("overlayBgAlpha:" .. tostring(orule.config.overlayBgAlpha or 0.85) .. "\n")
+    file:write("fontSize:" .. tostring(orule.config.fontSize or 18.0) .. "\n")
+    file:write("lineSpacing:" .. tostring(orule.config.lineSpacing or 0.1) .. "\n")
+    file:write("windowWidth:" .. tostring(orule.config.windowWidth or 820) .. "\n")
+    file:write("windowHeight:" .. tostring(orule.config.windowHeight or 800) .. "\n")
+    file:write("ruleCardHeight:" .. tostring(orule.config.ruleCardHeight or 183) .. "\n")
+    file:write("firstLaunch:" .. tostring(orule.config.firstLaunch and "1" or "0") .. "\n")
     file:write("radialMenuEnabled:" .. tostring(radialMenu.globalEnabled and "1" or "0") .. "\n")
-    file:write("autoUpdateTexts:" .. tostring(config.autoUpdateTexts and "1" or "0") .. "\n")
+    file:write("autoUpdateTexts:" .. tostring(orule.config.autoUpdateTexts and "1" or "0") .. "\n")
     for i, btn in ipairs(radialMenu.buttons) do
         file:write("radialButton_" .. i .. "_name:" .. (btn.name or "") .. "\n")
         file:write("radialButton_" .. i .. "_enabled:" .. tostring(btn.enabled and "1" or "0") .. "\n")
     end
     
-    for i, rule in ipairs(rulesDB) do
-        file:write("rule_" .. i .. "_key:" .. tostring(rule.key or 0) .. "\n")
+    for i, rule in ipairs(orule.rulesDB) do
+        if type(rule.key) == "table" then
+            file:write("rule_" .. i .. "_key:" .. table.concat(rule.key, ",") .. "\n")
+        else
+            file:write("rule_" .. i .. "_key:" .. tostring(rule.key or 0) .. "\n")
+        end
         file:write("rule_" .. i .. "_holdMode:" .. tostring(rule.holdMode and "1" or "0") .. "\n")
     end
     
@@ -601,20 +733,20 @@ local function saveConfig()
 end
 
 local function ensureDirectories()
-    if not doesDirectoryExist(SCRIPT_DIR) then createDirectory(SCRIPT_DIR) end
-    if not doesDirectoryExist(FONTS_DIR) then createDirectory(FONTS_DIR) end
-    if not doesDirectoryExist(IMAGES_DIR) then createDirectory(IMAGES_DIR) end
-    if not doesDirectoryExist(TEXTS_DIR) then createDirectory(TEXTS_DIR) end
+    if not doesDirectoryExist(orule.SCRIPT_DIR) then createDirectory(orule.SCRIPT_DIR) end
+    if not doesDirectoryExist(orule.FONTS_DIR) then createDirectory(orule.FONTS_DIR) end
+    if not doesDirectoryExist(orule.IMAGES_DIR) then createDirectory(orule.IMAGES_DIR) end
+    if not doesDirectoryExist(orule.TEXTS_DIR) then createDirectory(orule.TEXTS_DIR) end
 end
 
 local function clearTextCache()
-    text_cache = {}
+    orule.text_cache = {}
 end
 
 local function loadTextFromFile(filename)
-    if text_cache[filename] then return text_cache[filename] end
+    if orule.text_cache[filename] then return orule.text_cache[filename] end
     
-    local filepath = TEXTS_DIR .. '\\' .. filename
+    local filepath = orule.TEXTS_DIR .. '\\' .. filename
     
     if not doesFileExist(filepath) then
         return "{FF0000}Ошибка: текст не найден.\n{FFFFFF}Проверьте наличие файла " .. filename .. " в папке texts/"
@@ -647,7 +779,7 @@ local function loadTextFromFile(filename)
         end
     end
     
-    text_cache[filename] = content
+    orule.text_cache[filename] = content
     return content
 end
 
@@ -862,40 +994,64 @@ end
 
 local function loadConfig()
     ensureDirectories()
-    
-    local file = io.open(CONFIG_FILE, "r")
-    if not file then return end
+
+    local file = io.open(orule.CONFIG_FILE, "r")
+    if not file then
+        -- Файл настроек не найден - это нормально при первом запуске
+        -- Не показываем ошибку пользователю, но логируем для отладки
+        logError("loadConfig: Config file not found (first run?): " .. orule.CONFIG_FILE)
+        return
+    end
 
     for line in file:lines() do
         local cmd = line:match("^command:(.+)")
-        if cmd then config.command = cmd end
+        if cmd then orule.config.command = cmd end
 
         local ghk = line:match("^globalHotkey:(.+)")
-        if ghk then config.globalHotkey = tonumber(ghk) or 0 end
+        if ghk then
+            -- Проверяем, содержит ли строка запятые (массив клавиш)
+            if string.find(ghk, ",") then
+                local key_array = {}
+                for key_str in string.gmatch(ghk, "[^,]+") do
+                    local key_num = tonumber(key_str)
+                    if key_num and key_num > 0 then
+                        table.insert(key_array, key_num)
+                    end
+                end
+                if #key_array > 0 then
+                    orule.config.globalHotkey = key_array
+                else
+                    orule.config.globalHotkey = 0
+                end
+            else
+                -- Одиночная клавиша (для обратной совместимости)
+                orule.config.globalHotkey = tonumber(ghk) or 0
+            end
+        end
 
         local alpha = line:match("^overlayBgAlpha:(.+)")
-        if alpha then config.overlayBgAlpha = tonumber(alpha) or 0.85 end
+        if alpha then orule.config.overlayBgAlpha = tonumber(alpha) or 0.85 end
 
         local fsize = line:match("^fontSize:(.+)")
-        if fsize then config.fontSize = tonumber(fsize) or 18.0 end
+        if fsize then orule.config.fontSize = tonumber(fsize) or 18.0 end
 
         local lspace = line:match("^lineSpacing:(.+)")
-        if lspace then config.lineSpacing = tonumber(lspace) or 0.1 end
+        if lspace then orule.config.lineSpacing = tonumber(lspace) or 0.1 end
 
         local wwidth = line:match("^windowWidth:(.+)")
-        if wwidth then config.windowWidth = tonumber(wwidth) or 820 end
+        if wwidth then orule.config.windowWidth = tonumber(wwidth) or 820 end
 
         local wheight = line:match("^windowHeight:(.+)")
-        if wheight then config.windowHeight = tonumber(wheight) or 1200 end
+        if wheight then orule.config.windowHeight = tonumber(wheight) or 800 end
 
         local rcheight = line:match("^ruleCardHeight:(.+)")
-        if rcheight then config.ruleCardHeight = 183 end
-        
+        if rcheight then orule.config.ruleCardHeight = 183 end
+
         local first_launch = line:match("^firstLaunch:(.+)")
         if first_launch then
-            config.firstLaunch = (first_launch == "1")
+            orule.config.firstLaunch = (first_launch == "1")
         end
-        
+
         local radial_enabled = line:match("^radialMenuEnabled:(.+)")
         if radial_enabled then
             radialMenu.globalEnabled = (radial_enabled == "1")
@@ -903,7 +1059,7 @@ local function loadConfig()
 
         local auto_update_texts = line:match("^autoUpdateTexts:(.+)")
         if auto_update_texts then
-            config.autoUpdateTexts = (auto_update_texts == "1")
+            orule.config.autoUpdateTexts = (auto_update_texts == "1")
         end
 
         local btn_idx, btn_name = line:match("^radialButton_(%d+)_name:(.+)")
@@ -917,32 +1073,48 @@ local function loadConfig()
         end
         
         local r_idx, r_key = line:match("^rule_(%d+)_key:(.+)")
-        if r_idx and rulesDB[tonumber(r_idx)] then
-            local key_val = tonumber(r_key) or 0
-            rulesDB[tonumber(r_idx)].key = key_val
-            rulesDB[tonumber(r_idx)].keyName = getKeyName(key_val)
+        if r_idx and orule.rulesDB[tonumber(r_idx)] then
+            -- Проверяем, содержит ли строка запятые (массив клавиш)
+            if string.find(r_key, ",") then
+                local key_array = {}
+                for key_str in string.gmatch(r_key, "[^,]+") do
+                    local key_num = tonumber(key_str)
+                    if key_num and key_num > 0 then
+                        table.insert(key_array, key_num)
+                    end
+                end
+                if #key_array > 0 then
+                    orule.rulesDB[tonumber(r_idx)].key = key_array
+                    orule.rulesDB[tonumber(r_idx)].keyName = getShortcutName(key_array)
+                end
+            else
+                -- Одиночная клавиша (для обратной совместимости)
+                local key_val = tonumber(r_key) or 0
+                orule.rulesDB[tonumber(r_idx)].key = key_val
+                orule.rulesDB[tonumber(r_idx)].keyName = getKeyName(key_val)
+            end
         end
 
         local h_idx, h_mode = line:match("^rule_(%d+)_holdMode:(.+)")
-        if h_idx and rulesDB[tonumber(h_idx)] then
-            rulesDB[tonumber(h_idx)].holdMode = (h_mode == "1")
+        if h_idx and orule.rulesDB[tonumber(h_idx)] then
+            orule.rulesDB[tonumber(h_idx)].holdMode = (h_mode == "1")
         end
     end
     file:close()
     
-    if config.command then
+    if orule.config.command then
         ffi.fill(commandBuf, 32, 0)
-        ffi.copy(commandBuf, config.command, math.min(#config.command, 31))
+        ffi.copy(commandBuf, orule.config.command, math.min(#orule.config.command, 31))
     end
     
-    config.ruleCardHeight = 183
+    orule.config.ruleCardHeight = 183
     saveConfig()
 end
 
 local function initRadialBuffers()
     for i, btn in ipairs(radialMenu.buttons) do
         local name_cp1251 = btn.name or ("Кнопка " .. i)
-        -- Конвертируем CP1251 → UTF-8 для ImGui
+        -- Конвертируем CP1251 ? UTF-8 для ImGui
         local name_utf8 = u8(name_cp1251)
         ffi.copy(radialButtonBuffers[i], name_utf8, math.min(#name_utf8, 63))
     end
@@ -976,16 +1148,16 @@ local function getMVDDrillRegulationsText() return loadTextFromFile("mvd_drill.t
 local function getMVDStatuteText() return loadTextFromFile("mvd_statute.txt") end
 
 local function initStaticRules()
-    rulesDB = {
-        {name = "Правила для полицейских", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false},
-        {name = "Законодательная база", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false},
-        {name = "ФЗ \"О закрытых и охраняемых территориях\"", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false},
-        {name = "ФЗ \"О системе нормативно-правовых актов Нижегородской области\"", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false},
-        {name = "Уголовно-процессуальный кодекс", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false},
-        {name = "Трудовой кодекс", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false},
-        {name = "Министерство Внутренних Дел | Справочник Сотрудника", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false},
-        {name = "Министерство Внутренних дел | Правила строевого устава", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false},
-        {name = "Министерство Внутренних Дел | Устав", updateDate = "08.11.2025", key = 0, keyName = "Клавиша не зарегистрирована", holdMode = false}
+    orule.rulesDB = {
+        {name = "Правила для полицейских", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
+        {name = "Законодательная база", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
+        {name = "ФЗ \"О закрытых и охраняемых территориях\"", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
+        {name = "ФЗ \"О системе нормативно-правовых актов Нижегородской области\"", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
+        {name = "Уголовно-процессуальный кодекс", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
+        {name = "Трудовой кодекс", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
+        {name = "Министерство Внутренних Дел | Справочник Сотрудника", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
+        {name = "Министерство Внутренних дел | Правила строевого устава", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false},
+        {name = "Министерство Внутренних Дел | Устав", updateDate = "08.11.2025", key = {}, keyName = "Не назначено", holdMode = false}
     }
 end
 
@@ -1113,7 +1285,7 @@ end
 imgui.OnInitialize(function()
     ApplyCustomTheme()
     local io = imgui.GetIO()
-    local font_path = FONTS_DIR .. '\\EagleSans-Regular.ttf'
+    local font_path = orule.FONTS_DIR .. '\\EagleSans-Regular.ttf'
     
     if doesFileExist(font_path) then
         local ranges = io.Fonts:GetGlyphRangesCyrillic()
@@ -1121,7 +1293,7 @@ imgui.OnInitialize(function()
         title_font = io.Fonts:AddFontFromFileTTF(font_path, 22.0, nil, ranges)
     end
     
-    local radar_map_path = IMAGES_DIR .. '\\radar_map.png'
+    local radar_map_path = orule.IMAGES_DIR .. '\\radar_map.png'
     if doesFileExist(radar_map_path) then
         radar_map_texture = imgui.CreateTextureFromFile(radar_map_path)
         if not radar_map_texture then
@@ -1130,7 +1302,7 @@ imgui.OnInitialize(function()
     end
 
     for i = 1, 20 do
-        local ter_path = IMAGES_DIR .. '\\ter_' .. i .. '.jpg'
+        local ter_path = orule.IMAGES_DIR .. '\\ter_' .. i .. '.jpg'
         if doesFileExist(ter_path) then
             territory_textures[i] = imgui.CreateTextureFromFile(ter_path)
             if not territory_textures[i] then
@@ -1148,11 +1320,11 @@ imgui.OnFrame(
     function(this)
         local sw, sh = getScreenResolution()
         
-        local bg_color_struct = imgui.ImVec4(0, 0, 0, config.overlayBgAlpha)
+        local bg_color_struct = imgui.ImVec4(0, 0, 0, orule.config.overlayBgAlpha)
         local bg_color_u32 = imgui.ColorConvertFloat4ToU32(bg_color_struct)
         imgui.GetBackgroundDrawList():AddRectFilled(imgui.ImVec2(0, 0), imgui.ImVec2(sw, sh), bg_color_u32)
         
-        local rule = rulesDB[overlay_rule_index]
+        local rule = orule.rulesDB[overlay_rule_index]
         if rule then
             local wrap_w = sw * 0.95
             local vertical_margin = sh * 0.03
@@ -1282,7 +1454,7 @@ imgui.OnFrame(
                 imgui.Spacing()
 
                 if main_font then imgui.PushFont(main_font) end
-                imgui.SetWindowFontScale(config.fontSize / 17.0)
+                imgui.SetWindowFontScale(orule.config.fontSize / 17.0)
                 
                 -- Загрузка текста
                 local full_text = ''
@@ -1329,6 +1501,15 @@ imgui.OnFrame(
                 imgui.Spacing()
 
                 if full_text and #full_text > 0 then
+                    -- #region agent log
+                    local file3 = io.open("c:\\Games\\CyberRussia\\gtacr\\moonloader\\.cursor\\debug.log", "a")
+                    if file3 then
+                        local timestamp3 = os.time()
+                        file3:write(string.format('{"id":"log_%d","timestamp":%d,"location":"overlay_render","message":"renderSearchResults called","data":{"text_length":%d},"sessionId":"debug-session","runId":"perf-test","hypothesisId":"PERF_002"}\n', timestamp3, timestamp3*1000, #full_text))
+                        file3:close()
+                    end
+                    -- #endregion
+
                     local query = ffi.string(search_buffer)
                     renderSearchResults(full_text, query)
                 end
@@ -1348,8 +1529,8 @@ imgui.OnFrame(
                         
                         for i = 1, 6 do
                             if i > 1 and (i - 1) % images_per_row ~= 0 then imgui.SameLine() end
-                            if territory_textures[i] then
-                                imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height))
+                            if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
+                                pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
                                 imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
                             end
@@ -1363,7 +1544,7 @@ imgui.OnFrame(
                     imgui.Spacing()
                     imgui.Spacing()
                     if imgui.CollapsingHeader(u8'Фотографии##territory_fsb_photos') then
-                        if territory_textures[7] then
+                        if territory_textures[7] and imgui.IsTextureValid(territory_textures[7]) then
                             local window_width = imgui.GetWindowWidth()
                             local spacing = imgui.GetStyle().ItemSpacing.x
                             local padding = imgui.GetStyle().WindowPadding.x * 2
@@ -1371,7 +1552,7 @@ imgui.OnFrame(
                             local images_per_row = 3
                             local image_width = math.floor((avail_width - spacing * (images_per_row - 1)) / images_per_row)
                             local image_height = math.floor(image_width * 0.57)
-                            imgui.Image(territory_textures[7], imgui.ImVec2(image_width, image_height))
+                            pcall(function() imgui.Image(territory_textures[7], imgui.ImVec2(image_width, image_height)) end)
                         else
                             imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'Ошибка: Фотография ter_7.jpg не найдена!')
                         end
@@ -1383,7 +1564,7 @@ imgui.OnFrame(
                     imgui.Spacing()
                     imgui.Spacing()
                     if imgui.CollapsingHeader(u8'Фотографии##territory_army_photos') then
-                        if territory_textures[8] then
+                        if territory_textures[8] and imgui.IsTextureValid(territory_textures[8]) then
                             local window_width = imgui.GetWindowWidth()
                             local spacing = imgui.GetStyle().ItemSpacing.x
                             local padding = imgui.GetStyle().WindowPadding.x * 2
@@ -1391,7 +1572,7 @@ imgui.OnFrame(
                             local images_per_row = 3
                             local image_width = math.floor((avail_width - spacing * (images_per_row - 1)) / images_per_row)
                             local image_height = math.floor(image_width * 0.57)
-                            imgui.Image(territory_textures[8], imgui.ImVec2(image_width, image_height))
+                            pcall(function() imgui.Image(territory_textures[8], imgui.ImVec2(image_width, image_height)) end)
                         else
                             imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'Ошибка: Фотография ter_8.jpg не найдена!')
                         end
@@ -1414,8 +1595,8 @@ imgui.OnFrame(
                         for i = 9, 12 do
                             local idx = i - 8
                             if idx > 1 and (idx - 1) % images_per_row ~= 0 then imgui.SameLine() end
-                            if territory_textures[i] then
-                                imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height))
+                            if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
+                                pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
                                 imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
                             end
@@ -1440,8 +1621,8 @@ imgui.OnFrame(
                         for i = 13, 15 do
                             local idx = i - 12
                             if idx > 1 and (idx - 1) % images_per_row ~= 0 then imgui.SameLine() end
-                            if territory_textures[i] then
-                                imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height))
+                            if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
+                                pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
                                 imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
                             end
@@ -1466,8 +1647,8 @@ imgui.OnFrame(
                         for i = 16, 17 do
                             local idx = i - 15
                             if idx > 1 and (idx - 1) % images_per_row ~= 0 then imgui.SameLine() end
-                            if territory_textures[i] then
-                                imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height))
+                            if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
+                                pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
                                 imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
                             end
@@ -1491,8 +1672,8 @@ imgui.OnFrame(
                         for i = 18, 20 do
                             local idx = i - 17
                             if idx > 1 and (idx - 1) % images_per_row ~= 0 then imgui.SameLine() end
-                            if territory_textures[i] then
-                                imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height))
+                            if territory_textures[i] and imgui.IsTextureValid(territory_textures[i]) then
+                                pcall(function() imgui.Image(territory_textures[i], imgui.ImVec2(image_width, image_height)) end)
                             else
                                 imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8('Ошибка: ter_' .. i .. '.jpg'))
                             end
@@ -1506,11 +1687,11 @@ imgui.OnFrame(
                     imgui.Spacing()
                     imgui.Spacing()
                     if imgui.CollapsingHeader(u8'Карта радаров##radar_map') then
-                        if radar_map_texture then
+                        if radar_map_texture and imgui.IsTextureValid(radar_map_texture) then
                             local avail_width = imgui.GetContentRegionAvail().x
                             local image_width = avail_width * 0.95
                             local image_height = image_width * 0.75
-                            imgui.Image(radar_map_texture, imgui.ImVec2(image_width, image_height))
+                            pcall(function() imgui.Image(radar_map_texture, imgui.ImVec2(image_width, image_height)) end)
                         else
                             imgui.TextColored(imgui.ImVec4(1.0, 0.0, 0.0, 1.0), u8'Ошибка: Карта радаров не найдена!')
                         end
@@ -1538,7 +1719,7 @@ local function renderRulesTab()
     imgui.Spacing()
     imgui.Spacing()
     
-    for i, rule in ipairs(rulesDB) do
+    for i, rule in ipairs(orule.rulesDB) do
         local is_capturing_this = (key_capture_type == "rule" and key_capture_mode and key_capture_mode.index == i)
         local is_blocked_by_other = (is_capturing_any and not is_capturing_this)
 
@@ -1554,7 +1735,7 @@ local function renderRulesTab()
         imgui.PushStyleVarFloat(imgui.StyleVar.ChildRounding, 6.0)
         imgui.PushStyleVarFloat(imgui.StyleVar.ChildBorderSize, 1.5)
         
-        if imgui.BeginChild('##rule_card_' .. i, imgui.ImVec2(-20, config.ruleCardHeight), true) then
+        if imgui.BeginChild('##rule_card_' .. i, imgui.ImVec2(-20, orule.config.ruleCardHeight), true) then
             imgui.Spacing()
             imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.95, 0.95, 1.00, 1.00))
             imgui.Text(u8(rule.name or 'Без названия'))
@@ -1570,7 +1751,8 @@ local function renderRulesTab()
             imgui.Spacing()
             
             local key_name = getKeyName(rule.key)
-            local key_color = (rule.key == 0) and imgui.ImVec4(0.60, 0.60, 0.65, 0.70) or imgui.ImVec4(0.50, 0.45, 1.00, 0.90)
+            local has_key = (type(rule.key) == "table" and #rule.key > 0) or (type(rule.key) ~= "table" and rule.key > 0)
+            local key_color = not has_key and imgui.ImVec4(0.60, 0.60, 0.65, 0.70) or imgui.ImVec4(0.50, 0.45, 1.00, 0.90)
             imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Клавиша: ')
             imgui.SameLine(0, 5)
             imgui.TextColored(key_color, u8(key_name))
@@ -1598,7 +1780,7 @@ local function renderRulesTab()
             
             imgui.SameLine()
 
-            local bind_text = is_capturing_this and u8'Нажмите клавишу... (Backspace отмена)' or u8'Назначить клавишу'
+            local bind_text = is_capturing_this and u8'Нажмите клавишу или комбинацию... (Backspace отмена)' or u8'Назначить клавишу'
             
             if is_capturing_this then
                 imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.90, 0.60, 0.20, 1.00))
@@ -1627,7 +1809,7 @@ local function renderRulesTab()
             
             imgui.SameLine()
             
-            if rule.key and rule.key > 0 then
+            if (type(rule.key) == "table" and #rule.key > 0) or (type(rule.key) ~= "table" and rule.key > 0) then
                 if is_capturing_any then
                     imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.30, 0.30, 0.35, 0.60))
                     imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.30, 0.30, 0.35, 0.60))
@@ -1640,8 +1822,8 @@ local function renderRulesTab()
                 
                 local button_width_reset = (avail_width - spacing * 2) / 3
                 if imgui.Button(u8'Сбросить клавишу##reset_'..i, imgui.ImVec2(button_width_reset, button_height)) and not is_capturing_any then
-                    rule.key = 0
-                    rule.keyName = "Клавиша не зарегистрирована"
+                    rule.key = {}
+                    rule.keyName = "Не назначено"
                     saveConfig()
                 end
                 imgui.PopStyleColor(3)
@@ -1742,7 +1924,7 @@ local function renderRadialMenuTab()
             if imgui.Button(u8'Сохранить##save_btn_' .. i, imgui.ImVec2(90, 0)) and not is_capturing_any then
                 -- Читаем из буфера (UTF-8 от ImGui)
                 local new_name_utf8 = ffi.string(radialButtonBuffers[i])
-                -- Конвертируем UTF-8 → CP1251 для сохранения
+                -- Конвертируем UTF-8 ? CP1251 для сохранения
                 local new_name_cp1251 = encoding.UTF8:decode(new_name_utf8)
                 
                 if #new_name_cp1251 > 0 and #new_name_cp1251 <= 63 then
@@ -1850,7 +2032,7 @@ local function renderSettingsTab()
     imgui.TextColored(imgui.ImVec4(0.50, 0.45, 1.00, 1.00), u8'Горячие клавиши')
     imgui.Spacing()
     
-    local bind_text_global = is_capturing_global and u8'Нажмите клавишу... (Backspace отмена)' or (u8'Клавиша: '..u8(getKeyName(config.globalHotkey))..u8' (нажмите для изменения)')
+    local bind_text_global = is_capturing_global and u8'Нажмите клавишу или комбинацию... (Backspace отмена)' or (u8'Клавиша: '..u8(getKeyName(orule.config.globalHotkey))..u8' (нажмите для изменения)')
     local is_blocked_global = is_capturing_any and not is_capturing_global
     
     imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Глобальная горячая клавиша для меню:')
@@ -1881,7 +2063,7 @@ local function renderSettingsTab()
     
     imgui.Spacing()
     
-    if config.globalHotkey and config.globalHotkey > 0 then
+    if (type(orule.config.globalHotkey) == "table" and #orule.config.globalHotkey > 0) or (type(orule.config.globalHotkey) ~= "table" and orule.config.globalHotkey > 0) then
         if is_capturing_any then
             imgui.PushStyleColor(imgui.Col.Button, disabled_color)
             imgui.PushStyleColor(imgui.Col.ButtonHovered, disabled_color)
@@ -1893,7 +2075,7 @@ local function renderSettingsTab()
         end
         
         if imgui.Button(u8'Сбросить клавишу##reset_global', imgui.ImVec2(-20, 40)) and not is_capturing_any then
-            config.globalHotkey = 0
+            orule.config.globalHotkey = {}
             saveConfig()
         end
         imgui.PopStyleColor(3)
@@ -1910,10 +2092,10 @@ local function renderSettingsTab()
     end
 
     imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Прозрачность фона:')
-    local alpha_val = imgui.new.float[1](config.overlayBgAlpha)
+    local alpha_val = imgui.new.float[1](orule.config.overlayBgAlpha)
     imgui.PushItemWidth(-20)
-    if imgui.SliderFloat('##alpha', alpha_val, 0.0, 1.0, u8'%.2f') and not is_capturing_any then 
-        config.overlayBgAlpha = alpha_val[0]
+    if imgui.SliderFloat('##alpha', alpha_val, 0.0, 1.0, u8'%.2f') and not is_capturing_any then
+        orule.config.overlayBgAlpha = alpha_val[0]
         saveConfig() 
     end
     imgui.PopItemWidth()
@@ -1922,10 +2104,10 @@ local function renderSettingsTab()
     imgui.Spacing()
     
     imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Размер шрифта:')
-    local font_val = imgui.new.float[1](config.fontSize)
+    local font_val = imgui.new.float[1](orule.config.fontSize)
     imgui.PushItemWidth(-20)
-    if imgui.SliderFloat('##fontsize', font_val, 12.0, 32.0, u8'%.0f') and not is_capturing_any then 
-        config.fontSize = font_val[0]
+    if imgui.SliderFloat('##fontsize', font_val, 12.0, 32.0, u8'%.0f') and not is_capturing_any then
+        orule.config.fontSize = font_val[0]
         saveConfig() 
     end
     imgui.PopItemWidth()
@@ -1934,10 +2116,10 @@ local function renderSettingsTab()
     imgui.Spacing()
     
     imgui.TextColored(imgui.ImVec4(0.85, 0.85, 0.90, 1.00), u8'Расстояние между строками:')
-    local spacing_val = imgui.new.float[1](config.lineSpacing)
+    local spacing_val = imgui.new.float[1](orule.config.lineSpacing)
     imgui.PushItemWidth(-20)
-    if imgui.SliderFloat('##linespacing', spacing_val, 0.0, 1.0, u8'%.2f') and not is_capturing_any then 
-        config.lineSpacing = spacing_val[0]
+    if imgui.SliderFloat('##linespacing', spacing_val, 0.0, 1.0, u8'%.2f') and not is_capturing_any then
+        orule.config.lineSpacing = spacing_val[0]
         saveConfig() 
     end
     imgui.PopItemWidth()
@@ -1959,9 +2141,9 @@ local function renderSettingsTab()
         imgui.PushStyleVarFloat(imgui.StyleVar.Alpha, 0.5)
     end
     
-    local auto_update_checkbox = imgui.new.bool(config.autoUpdateTexts)
+    local auto_update_checkbox = imgui.new.bool(orule.config.autoUpdateTexts)
     if imgui.Checkbox(u8'Автоматически обновлять текстовые файлы', auto_update_checkbox) and not is_capturing_any then
-        config.autoUpdateTexts = auto_update_checkbox[0]
+        orule.config.autoUpdateTexts = auto_update_checkbox[0]
         saveConfig()
     end
     
@@ -1993,7 +2175,7 @@ local function renderSettingsTab()
         if not valid then
             sampAddChatMessage('[ORULE] Ошибка: ' .. error_msg, 0xFF0000)
         else
-            config.command = new_command
+            orule.config.command = new_command
             saveConfig()
             sampAddChatMessage('[ORULE] Настройки сохранены! Перезапустите скрипт (CTRL+R)', 0x45AFFF)
         end
@@ -2007,8 +2189,12 @@ end
 -- ============================================================
 local function renderInfoWindow()
     local sw, sh = getScreenResolution()
+    -- Адаптивный размер: максимум 90% от высоты экрана
+    local adaptive_height = math.min(orule.config.windowHeight or 800, sh * 0.9)
+    local adaptive_width = math.min(orule.config.windowWidth or 820, sw * 0.9)
+
     imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
-    imgui.SetNextWindowSize(imgui.ImVec2(config.windowWidth or 820, config.windowHeight or 1200), imgui.Cond.FirstUseEver)
+    imgui.SetNextWindowSize(imgui.ImVec2(adaptive_width, adaptive_height), imgui.Cond.FirstUseEver)
 
     imgui.PushStyleVarFloat(imgui.StyleVar.WindowRounding, 12.0)
     imgui.PushStyleVarFloat(imgui.StyleVar.WindowBorderSize, 2.0)
@@ -2156,7 +2342,7 @@ local function renderInfoWindow()
                 imgui.Columns(2, nil, false)
                 imgui.SetColumnWidth(0, 250)
                 
-                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'/' .. u8(config.command))
+                imgui.TextColored(imgui.ImVec4(0.60, 0.55, 1.00, 1.00), u8'/' .. u8(orule.config.command))
                 imgui.NextColumn()
                 imgui.TextColored(imgui.ImVec4(0.75, 0.75, 0.80, 0.90), u8'Открыть/закрыть меню настроек')
                 imgui.NextColumn()
@@ -2305,7 +2491,7 @@ local function renderInfoWindow()
         if imgui.Button(button_text, imgui.ImVec2(button_width, 45)) then
             show_info_window[0] = false
             info_window_shown_once = true
-            config.firstLaunch = false
+            orule.config.firstLaunch = false
             saveConfig()
             show_window[0] = true
             imgui.Process = true
@@ -2322,10 +2508,14 @@ end
 
 local function renderWindow()
     local sw, sh = getScreenResolution()
-    imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
-    imgui.SetNextWindowSize(imgui.ImVec2(config.windowWidth or 820, config.windowHeight or 1200), imgui.Cond.FirstUseEver)
+    -- Адаптивный размер: максимум 90% от высоты экрана
+    local adaptive_height = math.min(orule.config.windowHeight or 800, sh * 0.9)
+    local adaptive_width = math.min(orule.config.windowWidth or 820, sw * 0.9)
 
-    if imgui.Begin(u8'Менеджер правил', show_window, imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoResize) then
+    imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
+    imgui.SetNextWindowSize(imgui.ImVec2(adaptive_width, adaptive_height), imgui.Cond.FirstUseEver)
+
+    if imgui.Begin(u8'Менеджер правил', show_window, imgui.WindowFlags.NoCollapse) then
         if not first_render_done then
             first_render_done = true
             imgui.Text(u8'Загрузка интерфейса...')
@@ -2336,10 +2526,13 @@ local function renderWindow()
         local current_width = math.floor(current_size.x)
         local current_height = math.floor(current_size.y)
         
-        if (last_window_width ~= current_width or last_window_height ~= current_height) and (last_window_width > 0 or last_window_height > 0) then
-            config.windowWidth = current_width
-            config.windowHeight = current_height
-            saveConfig()
+        -- Ограничиваем сохранение размера разумными пределами
+        if current_width >= 600 and current_height >= 400 then
+            if (last_window_width ~= current_width or last_window_height ~= current_height) and (last_window_width > 0 or last_window_height > 0) then
+                orule.config.windowWidth = current_width
+                orule.config.windowHeight = current_height
+                saveConfig()
+            end
         end
         
         last_window_width = current_width
@@ -2608,7 +2801,7 @@ local function renderRadialMenu()
 
         local midAngle = angleStart + step * 0.5
         local label = enabled_buttons[i].name or ""
-        -- Конвертируем CP1251 → UTF-8 для ImGui
+        -- Конвертируем CP1251 ? UTF-8 для ImGui
         local label_u8 = u8(label)
         local textSize = imgui.CalcTextSize(label_u8)
         local textRadius = (innerRadius + outerRadius) * 0.5
@@ -2662,7 +2855,7 @@ function onWindowMessage(msg, wparam, lparam)
             consumeWindowMessage(true, false)
             show_info_window[0] = false
             info_window_shown_once = true
-            config.firstLaunch = false
+            orule.config.firstLaunch = false
             saveConfig()
             show_window[0] = true
             imgui.Process = true
@@ -2677,38 +2870,64 @@ function onWindowMessage(msg, wparam, lparam)
         end
         
         if key_capture_mode and key_capture_type then
+            is_capturing_keys = true
             local code = wparam
             if code == 27 then
                 key_capture_mode, key_capture_type = nil, nil
+                is_capturing_keys = false
                 consumeWindowMessage(true, true)
             elseif code == 0x08 then
                 key_capture_mode, key_capture_type = nil, nil
+                is_capturing_keys = false
                 consumeWindowMessage(true, true)
             elseif code ~= 0x10 and code ~= 0x11 and code ~= 0x12 then
-                local exclude_index = nil
-                if key_capture_type == "rule" and key_capture_mode and key_capture_mode.index then
-                    exclude_index = key_capture_mode.index
-                end
-                
-                local is_used, reason = isKeyAlreadyUsed(code, exclude_index)
-                if is_used then
-                    local key_name = getKeyName(code)
-                    
+                -- Собираем комбинацию: модификаторы + нажатая клавиша
+                local shortcut_keys = {}
+
+                -- Добавляем зажатые модификаторы
+                if isKeyDown(0xA2) or isKeyDown(0xA3) or isKeyDown(0x11) then table.insert(shortcut_keys, 0xA2) end -- LCTRL
+                if isKeyDown(0xA4) or isKeyDown(0xA5) or isKeyDown(0x12) then table.insert(shortcut_keys, 0xA4) end -- LALT
+                if isKeyDown(0xA0) or isKeyDown(0xA1) or isKeyDown(0x10) then table.insert(shortcut_keys, 0xA0) end -- LSHIFT
+
+                -- Добавляем нажатую клавишу
+                table.insert(shortcut_keys, code)
+
+                -- Ограничиваем максимальное количество клавиш в комбинации
+                if #shortcut_keys >= 1 and #shortcut_keys <= 3 then
+                    local exclude_index = nil
+                    if key_capture_type == "rule" and key_capture_mode and key_capture_mode.index then
+                        exclude_index = key_capture_mode.index
+                    end
+
+                    local is_used, reason = isShortcutAlreadyUsed(shortcut_keys, exclude_index)
+                    if is_used then
+                        local shortcut_name = getShortcutName(shortcut_keys)
+
+                        if isSampLoaded() and isSampAvailable() then
+                            sampAddChatMessage(string.format('[ORULE] Комбинация "%s" уже использована %s', shortcut_name, reason), 0xFF0000)
+                        end
+
+                        key_capture_mode, key_capture_type = nil, nil
+                        is_capturing_keys = false
+                        consumeWindowMessage(true, true)
+                    else
+                        if key_capture_type == "rule" and key_capture_mode and key_capture_mode.index and orule.rulesDB[key_capture_mode.index] then
+                            orule.rulesDB[key_capture_mode.index].key = shortcut_keys
+                            orule.rulesDB[key_capture_mode.index].keyName = getShortcutName(shortcut_keys)
+                        elseif key_capture_type == "global" then
+                            orule.config.globalHotkey = shortcut_keys
+                        end
+                        key_capture_mode, key_capture_type = nil, nil
+                        is_capturing_keys = false
+                        saveConfig()
+                        consumeWindowMessage(true, true)
+                    end
+                elseif #shortcut_keys > 3 then
                     if isSampLoaded() and isSampAvailable() then
-                        sampAddChatMessage(string.format('[ORULE] Клавиша "%s" уже использована %s', key_name, reason), 0xFF0000)
-                    end
-                    
-                    key_capture_mode, key_capture_type = nil, nil
-                    consumeWindowMessage(true, true)
-                else
-                    if key_capture_type == "rule" and key_capture_mode and key_capture_mode.index and rulesDB[key_capture_mode.index] then
-                        rulesDB[key_capture_mode.index].key = code
-                        rulesDB[key_capture_mode.index].keyName = getKeyName(code)
-                    elseif key_capture_type == "global" then
-                        config.globalHotkey = code
+                        sampAddChatMessage('[ORULE] Слишком много клавиш в комбинации (макс. 3)', 0xFF0000)
                     end
                     key_capture_mode, key_capture_type = nil, nil
-                    saveConfig()
+                    is_capturing_keys = false
                     consumeWindowMessage(true, true)
                 end
             end
@@ -2749,11 +2968,11 @@ function onWindowMessage(msg, wparam, lparam)
                 key_capture_mode, key_capture_type = nil, nil
                 consumeWindowMessage(true, true)
             else
-                if key_capture_type == "rule" and key_capture_mode and key_capture_mode.index and rulesDB[key_capture_mode.index] then
-                    rulesDB[key_capture_mode.index].key = code
-                    rulesDB[key_capture_mode.index].keyName = getKeyName(code)
+                if key_capture_type == "rule" and key_capture_mode and key_capture_mode.index and orule.rulesDB[key_capture_mode.index] then
+                    orule.rulesDB[key_capture_mode.index].key = code
+                    orule.rulesDB[key_capture_mode.index].keyName = getKeyName(code)
                 elseif key_capture_type == "global" then
-                    config.globalHotkey = code
+                    orule.config.globalHotkey = code
                 end
                 key_capture_mode, key_capture_type = nil, nil
                 saveConfig()
@@ -2793,14 +3012,14 @@ end
 local function cmd_help()
     sampAddChatMessage("======================", 0x45AFFF)
     sampAddChatMessage("Orule - Менеджер правил v1.1", 0x45AFFF)
-    sampAddChatMessage("/" .. config.command .. " - открыть меню", 0xFFFFFF)
+    sampAddChatMessage("/" .. orule.config.command .. " - открыть меню", 0xFFFFFF)
     sampAddChatMessage("Средняя кнопка мыши (удержание) - радиальное меню", 0xFFFFFF)
     sampAddChatMessage("Автор: Lev Exelent", 0xFFFFFF)
     sampAddChatMessage("======================", 0x45AFFF)
 end
 
 local function toggle()
-    if config.firstLaunch and not info_window_shown_once then
+    if orule.config.firstLaunch and not info_window_shown_once then
         show_info_window[0] = true
         imgui.Process = true
     else
@@ -2839,12 +3058,12 @@ function safeMain()
     
     loadAllRules()
     
-    if config.command and #config.command > 0 then 
-        sampRegisterChatCommand(config.command, toggle)
-        sampRegisterChatCommand(config.command .. "_help", cmd_help)
+    if orule.config.command and #orule.config.command > 0 then 
+        sampRegisterChatCommand(orule.config.command, toggle)
+        sampRegisterChatCommand(orule.config.command .. "_help", cmd_help)
     end
     
-    sampAddChatMessage("[ORULE] Готов! Используйте /" .. config.command, 0x00FF00)
+    sampAddChatMessage("[ORULE] Готов! Используйте /" .. orule.config.command, 0x00FF00)
     
     lua_thread.create(function()
         wait(2000)
@@ -2881,7 +3100,7 @@ function safeMain()
         
         -- Логика для текстовых файлов
         if resource_type == "text" then
-            if config.autoUpdateTexts then
+            if orule.config.autoUpdateTexts then
                 print('[ORULE] Обновляю текст: ' .. path:match('([^\\]+)$'))
                 downloadUrlToFile(url, path, function(id, status)
                     if status == require('moonloader').download_status.STATUSEX_ENDDOWNLOAD then
@@ -3024,16 +3243,31 @@ function safeMain()
         wait(0)
         local is_game_focused = not (sampIsChatInputActive() or sampIsDialogActive() or isSampfuncsConsoleActive() or isPauseMenuActive())
         
-        if is_game_focused then
-            if config.globalHotkey and config.globalHotkey > 0 and isKeyJustPressed(config.globalHotkey) then
+        if is_game_focused and not is_capturing_keys then
+            -- Проверка глобальной горячей клавиши (теперь поддерживает комбинации)
+            if ((type(orule.config.globalHotkey) == "table" and isShortcutPressed(orule.config.globalHotkey)) or
+                (type(orule.config.globalHotkey) ~= "table" and orule.config.globalHotkey > 0 and isKeyJustPressed(orule.config.globalHotkey))) then
                 toggle()
             end
 
             held_rule_active = false
-            for i, rule in ipairs(rulesDB) do
-                if rule.key and rule.key > 0 then
+            for i, rule in ipairs(orule.rulesDB) do
+                if rule.key and ((type(rule.key) == "table" and #rule.key > 0) or (type(rule.key) ~= "table" and rule.key > 0)) then
                     if rule.holdMode then
-                        if isKeyDown(rule.key) then
+                        -- Для режима удержания проверяем все клавиши комбинации
+                        local all_pressed = true
+                        if type(rule.key) == "table" then
+                            for _, key in ipairs(rule.key) do
+                                if not isKeyDown(key) then
+                                    all_pressed = false
+                                    break
+                                end
+                            end
+                        else
+                            all_pressed = isKeyDown(rule.key)
+                        end
+
+                        if all_pressed then
                             if overlay_rule_index ~= i then
                                 ffi.fill(search_buffer, 256, 0)
                             end
@@ -3042,11 +3276,13 @@ function safeMain()
                             break
                         end
                     else
-                        if isKeyJustPressed(rule.key) then
-                            if overlay_visible and overlay_rule_index == i then 
+                        -- Для обычного режима проверяем комбинацию
+                        if (type(rule.key) == "table" and isShortcutPressed(rule.key)) or
+                           (type(rule.key) ~= "table" and isKeyJustPressed(rule.key)) then
+                            if overlay_visible and overlay_rule_index == i then
                                 overlay_visible = false
                                 first_render_done = false
-                            else 
+                            else
                                 overlay_rule_index, overlay_visible = i, true
                                 ffi.fill(search_buffer, 256, 0)
                             end
@@ -3055,7 +3291,7 @@ function safeMain()
                 end
             end
 
-            if not held_rule_active and overlay_visible and rulesDB[overlay_rule_index] and rulesDB[overlay_rule_index].holdMode then
+            if not held_rule_active and overlay_visible and orule.rulesDB[overlay_rule_index] and orule.rulesDB[overlay_rule_index].holdMode then
                 overlay_visible = false
             end
 
