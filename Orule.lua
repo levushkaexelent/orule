@@ -150,28 +150,12 @@ if enable_autoupdate then
                                                             restoreBackup()
                                                             return
                                                         end
-                                                        
-                                                        local utf8_content = temp_file:read('*a')
+
+                                                        -- Читаем скачанный файл как есть
+                                                        local raw_content = temp_file:read('*a')
                                                         temp_file:close()
-                                                        
-                                                        -- Убираем BOM
-                                                        if utf8_content:sub(1, 3) == '\xEF\xBB\xBF' then
-                                                            utf8_content = utf8_content:sub(4)
-                                                        end
-                                                        
-                                                        -- Используем встроенный декодер
-                                                        local success, cp1251_content = pcall(function()
-                                                            return encoding.UTF8:decode(utf8_content)
-                                                        end)
-                                                        
-                                                        if not success or not cp1251_content then
-                                                            sampAddChatMessage(prefix..'Ошибка конвертации кодировки', -1)
-                                                            restoreBackup()
-                                                            os.remove(temp_update)
-                                                            return
-                                                        end
-                                                        
-                                                        -- Сохраняем
+
+                                                        -- Сохраняем поверх старого скрипта
                                                         local output_file = io.open(script_path, 'wb')
                                                         if not output_file then
                                                             sampAddChatMessage(prefix..'Ошибка записи файла', -1)
@@ -179,16 +163,16 @@ if enable_autoupdate then
                                                             os.remove(temp_update)
                                                             return
                                                         end
-                                                        
-                                                        output_file:write(cp1251_content)
+
+                                                        output_file:write(raw_content)
                                                         output_file:close()
                                                         os.remove(temp_update)
-                                                        
+
                                                         -- Удаляем резервную копию при успехе
                                                         if doesFileExist(backup_path) then
                                                             os.remove(backup_path)
                                                         end
-                                                        
+
                                                         sampAddChatMessage(prefix..'Обновление завершено успешно!', -1)
                                                         wait(1000)
                                                         thisScript():reload()
