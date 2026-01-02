@@ -126,7 +126,7 @@ if enable_autoupdate then
                                     local updateversion = json_data.latest
                                     local updatelink = json_data.updateurl
                                     
-                                    if updateversion ~= thisScript().version then
+                                    if tostring(updateversion) ~= tostring(thisScript().version) then
                                         lua_thread.create(function()
                                             sampAddChatMessage(prefix..'Обнаружено обновление '..thisScript().version..' ? '..updateversion, -1)
                                             wait(500)
