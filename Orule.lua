@@ -1,4 +1,4 @@
-script_version('0')
+script_version('1.2')
 script_name('Orule - Менеджер правил')
 script_author('Lev Exelent (vk.com/e11evated)')
 
