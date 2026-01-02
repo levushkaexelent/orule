@@ -118,15 +118,30 @@ if enable_autoupdate then
                         if doesFileExist(temp_json) then
                             local json_file = io.open(temp_json, 'r')
                             if json_file then
-                                local json_data = decodeJson(json_file:read('*a'))
+                                local content = json_file:read('*a')
                                 json_file:close()
                                 os.remove(temp_json)
-                                
-                                if json_data and json_data.latest and json_data.updateurl then
+
+                                -- Очистка от UTF-8 BOM, если он есть
+                                if content:sub(1, 3) == '\xEF\xBB\xBF' then
+                                    content = content:sub(4)
+                                end
+
+                                local success, json_data = pcall(decodeJson, content)
+                                if not success then
+                                    logError("Ошибка парсинга JSON обновления: " .. tostring(json_data))
+                                    return
+                                end
+
+                                if success and json_data and json_data.latest and json_data.updateurl then
                                     local updateversion = json_data.latest
                                     local updatelink = json_data.updateurl
                                     
-                                    if tostring(updateversion) ~= tostring(thisScript().version) then
+                                    -- Усиленная проверка версии
+                                    local current_v = tostring(thisScript().version):gsub("%s+", "")
+                                    local latest_v = tostring(updateversion):gsub("%s+", "")
+
+                                    if latest_v ~= current_v then
                                         lua_thread.create(function()
                                             sampAddChatMessage(prefix..'Обнаружено обновление '..thisScript().version..' ? '..updateversion, -1)
                                             wait(500)
@@ -2995,7 +3010,7 @@ end
 -- ============================================================
 local function cmd_help()
     sampAddChatMessage("======================", 0x45AFFF)
-    sampAddChatMessage("Orule - Менеджер правил v1.1", 0x45AFFF)
+    sampAddChatMessage("Orule - Менеджер правил v1.2", 0x45AFFF)
     sampAddChatMessage("/" .. orule.config.command .. " - открыть меню", 0xFFFFFF)
     sampAddChatMessage("Средняя кнопка мыши (удержание) - радиальное меню", 0xFFFFFF)
     sampAddChatMessage("Автор: Lev Exelent", 0xFFFFFF)
