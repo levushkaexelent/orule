@@ -3,7 +3,7 @@ script_name('Orule - Менеджер правил')
 script_author('Lev Exelent (vk.com/e11evated)')
 
 function update()
-    local raw = 'https://raw.githubusercontent.com/GovnocodedByChapo/autoupdtest/main/file.json'
+    local raw = 'https://raw.githubusercontent.com/levushkaexelent/orule/refs/heads/main/update.json'
     local dlstatus = require('moonloader').download_status
     local requests = require('requests')
     local f = {}
